@@ -29,10 +29,24 @@ namespace PaskalCompiler
             return new CToken();
         }
     }
-    enum TokenType { variable, something, el }
+    enum TokenType { variableLiter, constantLiter, reservedLiter}
+    enum ReservedWords { programWord, constWord, varWord, beginWord, endWord, ifWord, thenWord, forWord, ofWord }
     class CToken
     {
-        TokenType _tt;
+        public TokenType _tt;
+        public CToken()
+        {
+            _tt = TokenType.constantLiter;
+        }
         public override string ToString() { return "Generic token"; }
+    }
+
+    class CConstant : CToken
+    {
+        public CConstant()
+        {
+            _tt = TokenType.constantLiter;
+        }
+        public override string ToString() { return "Constant"; }
     }
 }
