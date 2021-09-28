@@ -6,14 +6,22 @@ namespace PaskalCompiler
 {
     class ModuleIO
     {
-        StreamReader file;
+        FileStream file;
+        byte[] buffer;
+        int bufferCounter;
+        long charCounter;
+        long lineCounter;
+        int bufferLength;
+        const int readCount = 1028;
+
         public ModuleIO(string filePath)
         {
-            FileStream fs = File.OpenRead(filePath);
-            if(fs != null)
-            {
-                file = new StreamReader(fs);
-            }
+            file = File.OpenRead(filePath);
+            bufferCounter = readCount;
+            bufferLength = readCount;
+            charCounter = 0;
+            lineCounter = 0;
+            buffer = new byte[readCount];
         }
         ~ModuleIO()
         {
@@ -24,12 +32,31 @@ namespace PaskalCompiler
             }
         }
 
+        public char NextChar()
+        {
+            if(bufferCounter >= bufferLength)
+            {
+                int bufferLength = file.Read(buffer, 0, readCount);
+                if (bufferLength == 0)
+                    throw new Exception("EOF");
+                bufferCounter = 0;
+            }
+            char nextChar = (char)buffer[bufferCounter++];
+            charCounter++;
+            if (nextChar == '\n')
+                lineCounter++;
+            return nextChar;
+        }
+        /*
         CToken GetNextToken()
         {
+            
             return new CToken();
         }
+        */
     }
-    enum TokenType { variableLiter, constantLiter, reservedLiter}
+    /*
+    enum TokenType { identifierLiter, constantLiter, keywordLiter, separatorLiter, operatorLiter, commentLiter}
     enum ReservedWords { programWord, constWord, varWord, beginWord, endWord, ifWord, thenWord, forWord, ofWord }
     class CToken
     {
@@ -49,4 +76,20 @@ namespace PaskalCompiler
         }
         public override string ToString() { return "Constant"; }
     }
+    */
+
 }
+/*
+ * char nextch()
+ * {
+ *      if(buffer is empty) {read next buffer;}
+ *      inc counter;
+ *      return current liter;
+ * }
+ * 
+ * error(error information){
+ *      record error to buffer
+ *      (position in code)
+ *      (code connected to error)
+ * }
+ */
