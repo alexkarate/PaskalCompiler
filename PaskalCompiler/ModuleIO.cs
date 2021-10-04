@@ -14,14 +14,16 @@ namespace PaskalCompiler
         int bufferLength;
         const int readCount = 1028;
 
+        public List<Error> Errors { get; }
         public ModuleIO(string filePath)
         {
             file = File.OpenRead(filePath);
-            bufferCounter = readCount;
-            bufferLength = readCount;
+            bufferCounter = 0;
+            bufferLength = 0;
             charCounter = 0;
-            lineCounter = 0;
+            lineCounter = 1;
             buffer = new byte[readCount];
+            Errors = new List<Error>();
         }
         ~ModuleIO()
         {
@@ -32,64 +34,52 @@ namespace PaskalCompiler
             }
         }
 
-        public char NextChar()
+        public bool NextChar(out char c)
         {
-            if(bufferCounter >= bufferLength)
+            c = '\0';
+            if (bufferCounter >= bufferLength)
             {
-                int bufferLength = file.Read(buffer, 0, readCount);
+                bufferLength = file.Read(buffer, 0, readCount);
                 if (bufferLength == 0)
-                    throw new Exception("EOF");
+                    return false;
                 bufferCounter = 0;
             }
-            char nextChar = (char)buffer[bufferCounter++];
-            charCounter++;
-            if (nextChar == '\n')
+            c = (char)buffer[bufferCounter++];
+
+            if (c == '\n')
+            {
                 lineCounter++;
-            return nextChar;
+                charCounter = 1;
+            }
+            else
+                charCounter++;
+            return true;
         }
-        /*
-        CToken GetNextToken()
+
+        public void RecordError(ErrorInformation errorInfo) 
         {
-            
-            return new CToken();
+            Errors.Add(new Error(errorInfo, lineCounter, charCounter));
         }
-        */
-    }
-    /*
-    enum TokenType { identifierLiter, constantLiter, keywordLiter, separatorLiter, operatorLiter, commentLiter}
-    enum ReservedWords { programWord, constWord, varWord, beginWord, endWord, ifWord, thenWord, forWord, ofWord }
-    class CToken
-    {
-        public TokenType _tt;
-        public CToken()
-        {
-            _tt = TokenType.constantLiter;
-        }
-        public override string ToString() { return "Generic token"; }
     }
 
-    class CConstant : CToken
+    class Error
     {
-        public CConstant()
+        public ErrorInformation info;
+        public long lineNum;
+        public long charNum;
+        public Error(ErrorInformation info, long lineNum, long charNum)
         {
-            _tt = TokenType.constantLiter;
+            this.lineNum = lineNum;
+            this.charNum = charNum;
+            this.info = info;
         }
-        public override string ToString() { return "Constant"; }
     }
-    */
-
+    class ErrorInformation
+    {
+        public string Message { get; }
+        public ErrorInformation(string message)
+        {
+            Message = message;
+        }
+    }
 }
-/*
- * char nextch()
- * {
- *      if(buffer is empty) {read next buffer;}
- *      inc counter;
- *      return current liter;
- * }
- * 
- * error(error information){
- *      record error to buffer
- *      (position in code)
- *      (code connected to error)
- * }
- */
