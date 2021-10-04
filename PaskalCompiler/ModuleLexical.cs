@@ -66,16 +66,19 @@ namespace PaskalCompiler
         EOperator _vo;
         public COperation(EOperator op)
         {
+            _tt = ETokenType.Oper;
             _vo = op;
         }
         public override string ToString() { return "Operation"; }
     }
 
-    class CIdent : CToken
+    class CIdentificator : CToken
     {
-        public CIdent()
+        string identName;
+        public CIdentificator(string name)
         {
-
+            identName = name;
+            _tt = ETokenType.Ident;
         }
         public override string ToString() { return "Ident"; }
     }
