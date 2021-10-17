@@ -34,14 +34,14 @@ namespace PaskalCompiler
             }
         }
 
-        public bool NextChar(out char c)
+        public char NextChar()
         {
-            c = '\0';
+            char c = '\0';
             if (bufferCounter >= bufferLength)
             {
                 bufferLength = file.Read(buffer, 0, readCount);
                 if (bufferLength == 0)
-                    return false;
+                    return c;
                 bufferCounter = 0;
             }
             c = (char)buffer[bufferCounter++];
@@ -53,7 +53,7 @@ namespace PaskalCompiler
             }
             else
                 charCounter++;
-            return true;
+            return c;
         }
 
         public void RecordError(ErrorInformation errorInfo) 

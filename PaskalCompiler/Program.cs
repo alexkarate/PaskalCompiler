@@ -7,13 +7,11 @@ namespace PaskalCompiler
         static void Main(string[] args)
         {
             ModuleIO io = new ModuleIO("D:\\pascal\\helloWorld.pas");
-            char c;
-            int t = 0;
-            while (io.NextChar(out c))
+            ModuleLexical lexical = new ModuleLexical(io);
+            CToken sym;
+            while ((sym = lexical.NextSym())._tt != ETokenType.None)
             {
-                Console.Write(c);
-                if (t++ % 12 == 0)
-                    io.RecordError(new ErrorInformation("Test Error"));
+                Console.WriteLine(sym);
             }
             Console.WriteLine();
             
@@ -21,7 +19,6 @@ namespace PaskalCompiler
             {
                 Console.WriteLine("Error: {0}. Line: {1}, Char: {2}", io.Errors[i].info.Message, io.Errors[i].lineNum, io.Errors[i].charNum);
             }
-            
         }
     }
 }
