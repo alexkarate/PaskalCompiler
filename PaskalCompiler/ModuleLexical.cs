@@ -20,6 +20,7 @@ namespace PaskalCompiler
 
         public CToken NextSym()
         {
+            // Buffer from previous iteration
             currentSymbol.Clear();
             char c;
             if(bufferedChar != '\0')
@@ -31,49 +32,50 @@ namespace PaskalCompiler
                 c = io.NextChar();
             while(c != '\0')
             {
+                // If this is a new symbol
                 if(currentSymbol.Length == 0)
                 {
                     EOperator op;
-                    if (IdentBegin(c))
+                    if (IsIdentBegin(c)) // Identifier or reserved words
                     {
                         currentSymbol.Append(c);
                         predictedSymbol = ETokenType.Ident;
                     }
-                    else if (SingularSymbol(c, out op))
+                    else if (IsSingularSymbol(c, out op)) // Symbols that exist in only one operation
                     {
                         return new COperation(op);
                     }
-                    else if(MultipleSymbol(c))
+                    else if(IsMultipleSymbol(c)) // Symbols that exist in multiple operations
                     {
                         currentSymbol.Append(c);
                         predictedSymbol = ETokenType.Oper;
                     }
-                    else if(c == '\'')
+                    else if(c == '\'') // String or char constant
                     {
                         currentSymbol.Append(c);
                         predictedSymbol = ETokenType.Value;
                         predictedType = EVarType.vtChar;
                     }
-                    else if(char.IsNumber(c))
+                    else if(char.IsNumber(c)) // Number constant
                     {
                         currentSymbol.Append(c);
                         predictedSymbol = ETokenType.Value;
                         predictedType = EVarType.vtInt;
                     }
-                    else if(!char.IsWhiteSpace(c))
+                    else if(!char.IsWhiteSpace(c)) // Skip whitespace
                         io.RecordError(new IncorrectCharacterError(c));
                 }
                 else
                 {
-                    if (char.IsWhiteSpace(c))
-                        break;
                     if (predictedSymbol == ETokenType.Ident)
                     {
-                        if (Ident(c))
+                        if (char.IsWhiteSpace(c)) // On whitespace resolve the symbol
+                            break;
+                        if (IsIdent(c)) // If current is identifier, then accept all symbols that can be in an identifier
                         {
                             currentSymbol.Append(c);
                         }
-                        else
+                        else // Illegal symbol
                         {
                             bufferedChar = c;
                             break;
@@ -81,8 +83,10 @@ namespace PaskalCompiler
                     }
                     else if(predictedSymbol == ETokenType.Oper)
                     {
+                        if (char.IsWhiteSpace(c)) // On whitespace resolve the symbol
+                            break;
                         EOperator t;
-                        if(MultipleSymbol(c))
+                        if(IsMultipleSymbol(c))// If current is operation, then accept all symbols, as long as the new operation exists
                         {
                             currentSymbol.Append(c);
                             if (!IsOperator(currentSymbol.ToString(), out t))
@@ -100,17 +104,34 @@ namespace PaskalCompiler
                     }
                     else if(predictedSymbol == ETokenType.Value)
                     {
-                        if(predictedType == EVarType.vtChar || predictedType == EVarType.vtString)
+                        if(predictedType == EVarType.vtChar || predictedType == EVarType.vtString) // If current is string constant, then accept all symbols until a quote character
                         {
+                            bool end = false;
                             if (c == '\'')
                             {
                                 currentSymbol.Append(c);
+                                c = io.NextChar();
+                                continue;
+                            }
+                            else if (currentSymbol[currentSymbol.Length - 1] == '\'') // Accept only pairs of quotes ('' => '). Otherwise resolve the string
+                            {
+                                int quoteCount = 0;
+                                for (int i = currentSymbol.Length - 1; i > 0; i--)
+                                {
+                                    if (currentSymbol[i] == '\'')
+                                        quoteCount++;
+                                    else
+                                        break;
+                                }
+                                end = quoteCount % 2 != 0;
+                            }
+                            if(end)
+                            {
+                                bufferedChar = c;
                                 break;
                             }
-                                
-                            if (predictedType == EVarType.vtChar && currentSymbol.Length >= 2)
-                                predictedType = EVarType.vtString;
-                            currentSymbol.Append(c);
+                            else
+                                currentSymbol.Append(c);
                         }
                         else if(predictedType == EVarType.vtInt || predictedType == EVarType.vtReal)
                         {
@@ -194,16 +215,15 @@ namespace PaskalCompiler
             }
             else if(predictedSymbol == ETokenType.Value)
             {
-                if(predictedType == EVarType.vtChar)
+                if(predictedType == EVarType.vtChar || predictedType == EVarType.vtString)
                 {
+                    ReplacePairsOfQuotes(currentSymbol);
                     if (currentSymbol.Length == 2)
                         return new CValue(EVarType.vtString, string.Empty);
+                    else if(currentSymbol.Length > 3)
+                        return new CValue(EVarType.vtString, currentSymbol.ToString().Substring(1, currentSymbol.Length - 2));
                     else
                         return new CValue(EVarType.vtChar, currentSymbol[1]);
-                }
-                else if(predictedType == EVarType.vtString)
-                {
-                    return new CValue(EVarType.vtString, currentSymbol.ToString().Substring(1, currentSymbol.Length - 2));
                 }
                 else if(predictedType == EVarType.vtInt)
                 {
@@ -221,6 +241,11 @@ namespace PaskalCompiler
         class IncorrectCharacterError : ErrorInformation
         {
             public IncorrectCharacterError(char c) : base(string.Format("incorrect character '{0}'", c)) { }
+        }
+
+        void ReplacePairsOfQuotes(StringBuilder str)
+        {
+            str.Replace("''", "'", 1, str.Length - 2);
         }
 
         bool IsReserved(string value, out EOperator op)
@@ -350,7 +375,7 @@ namespace PaskalCompiler
                     return false;
             }
         }
-        bool SingularSymbol(char c, out EOperator op)
+        bool IsSingularSymbol(char c, out EOperator op)
         {
             switch (c)
             {
@@ -384,17 +409,17 @@ namespace PaskalCompiler
             }
         }
 
-        bool MultipleSymbol(char c)
+        bool IsMultipleSymbol(char c)
         {
             return c == ':' || c == '=' || c == '<' || c == '>' || c == '.';
         }
 
-        bool IdentBegin(char c)
+        bool IsIdentBegin(char c)
         {
             return char.IsLetter(c) || c == '_';
         }
         
-        bool Ident(char c)
+        bool IsIdent(char c)
         {
             return char.IsLetterOrDigit(c) || c == '_';
         }
@@ -523,7 +548,7 @@ namespace PaskalCompiler
             _tt = ETokenType.Oper;
             _vo = op;
         }
-        public override string ToString() { return string.Format("Operator({0})", _vo.ToString()); }
+        public override string ToString() { return string.Format("Operator ({0})", _vo.ToString()); }
     }
 
     class CIdentificator : CToken
@@ -534,6 +559,6 @@ namespace PaskalCompiler
             identName = name;
             _tt = ETokenType.Ident;
         }
-        public override string ToString() { return string.Format("Ident({0})", identName); }
+        public override string ToString() { return string.Format("Identifier ({0})", identName); }
     }
 }
