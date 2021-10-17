@@ -1,8 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 
 namespace PaskalCompiler
 {
@@ -30,6 +28,7 @@ namespace PaskalCompiler
             }
             else
                 c = io.NextChar();
+
             while(c != '\0')
             {
                 // If this is a new symbol
@@ -75,7 +74,7 @@ namespace PaskalCompiler
                         {
                             currentSymbol.Append(c);
                         }
-                        else // Illegal symbol
+                        else // End of identifier
                         {
                             bufferedChar = c;
                             break;
@@ -133,18 +132,18 @@ namespace PaskalCompiler
                             else
                                 currentSymbol.Append(c);
                         }
-                        else if(predictedType == EVarType.vtInt || predictedType == EVarType.vtReal)
+                        else if(predictedType == EVarType.vtInt || predictedType == EVarType.vtReal) // If current is a number, then accept all digits
                         {
                             if (char.IsDigit(c))
                                 currentSymbol.Append(c);
                             else if(c == '.' || char.ToLower(c) == 'e')
                             {
-                                if(predictedType == EVarType.vtInt)
+                                if(predictedType == EVarType.vtInt) // If we encountered a dot or an e while current is an integer, then change current to real
                                 {
                                     currentSymbol.Append(char.ToLower(c));
                                     predictedType = EVarType.vtReal;
                                 }
-                                else
+                                else // If current is real, then the only allowed format is (int).(int)e(int). Otherwise, resolve the symbol.
                                 {
                                     c = char.ToLower(c);
                                     string value = currentSymbol.ToString();
@@ -157,7 +156,7 @@ namespace PaskalCompiler
                                     }
                                 }
                             }
-                            else if(c == '-' || c == '+'  && predictedType == EVarType.vtReal)
+                            else if(c == '-' || c == '+'  && predictedType == EVarType.vtReal) // If we encounter a + or - after e, then it's part of the number. Otherwise, resolve the symbol
                             {
                                 if (currentSymbol[currentSymbol.Length - 1] == 'e')
                                     currentSymbol.Append(c);
@@ -179,24 +178,25 @@ namespace PaskalCompiler
                 }
                 c = io.NextChar();
             }
-            if (currentSymbol.Length == 0)
+            if (currentSymbol.Length == 0) // If we are resolving an empty string, then we are finished
                 return CToken.empty;
+
             if (predictedSymbol == ETokenType.Ident)
             {
                 EOperator op;
                 bool logicalRet;
                 string value = currentSymbol.ToString();
-                if(IsReserved(value, out op))
+                if(IsReserved(value, out op)) // If identifier is reserved then return a symbol
                 {
                     return new COperation(op);
                 }
-                else if(IsLogical(value, out logicalRet))
+                else if(IsLogical(value, out logicalRet)) // If identifier is "True" or "False", return a constant
                 {
                     return new CValue(EVarType.vtBoolean, logicalRet);
                 }
                 else
                 {
-                    if (value.Length <= 80)
+                    if (value.Length <= 80) // Record only the first 80 characters in identifier
                         return new CIdentificator(value);
                     else
                         return new CIdentificator(value.Substring(0, 80));
@@ -218,11 +218,12 @@ namespace PaskalCompiler
                 if(predictedType == EVarType.vtChar || predictedType == EVarType.vtString)
                 {
                     ReplacePairsOfQuotes(currentSymbol);
-                    if (currentSymbol.Length == 2)
+
+                    if (currentSymbol.Length == 2)    // If the value is "''" then return an empty string
                         return new CValue(EVarType.vtString, string.Empty);
-                    else if(currentSymbol.Length > 3)
+                    else if(currentSymbol.Length > 3) // Return string
                         return new CValue(EVarType.vtString, currentSymbol.ToString().Substring(1, currentSymbol.Length - 2));
-                    else
+                    else                              // Return char
                         return new CValue(EVarType.vtChar, currentSymbol[1]);
                 }
                 else if(predictedType == EVarType.vtInt)
@@ -416,12 +417,12 @@ namespace PaskalCompiler
 
         bool IsIdentBegin(char c)
         {
-            return char.IsLetter(c) || c == '_';
+            return Regex.IsMatch(c.ToString(), @"^[a-zA-Z_]+$");
         }
         
         bool IsIdent(char c)
         {
-            return char.IsLetterOrDigit(c) || c == '_';
+            return IsIdentBegin(c) || char.IsNumber(c);
         }
     }
     enum ETokenType
@@ -470,9 +471,6 @@ namespace PaskalCompiler
         elsesy,
         dosy,
         whilesy,
-        //ofsy,
-        //orsy,
-        //tosy,
         endsy,
 
         integersy,
