@@ -34,21 +34,34 @@ namespace PaskalCompiler
                 curSymbol = CToken.empty;
             }
         }
+        COperation Oper(EOperator op)
+        {
+            return new COperation(op);
+        }
+        CIdentificator Ident()
+        {
+            return new CIdentificator(null);
+        }
+
+        CValue Value(EVarType type)
+        {
+            return new CValue(type, null);
+        }
 
         void Program()
         {
-            Accept(new COperation(EOperator.programsy));
-            Accept(new CIdentificator(null));
-            if (curSymbol.Equals(new CIdentificator(null)))
+            Accept(Oper(EOperator.programsy));
+            Accept(Ident());
+            if (curSymbol.Equals(Ident()))
             {
-                Accept(new CIdentificator(null));
-                while(curSymbol.Equals(new COperation(EOperator.comma)))
+                Accept(Ident());
+                while(curSymbol.Equals(Oper(EOperator.comma)))
                 {
-                    Accept(new COperation(EOperator.comma));
-                    Accept(new CIdentificator(null));
+                    Accept(Oper(EOperator.comma));
+                    Accept(Ident());
                 }
             }
-            Accept(new COperation(EOperator.semicolon));
+            Accept(Oper(EOperator.semicolon));
             Block();
         }
         void Block()
