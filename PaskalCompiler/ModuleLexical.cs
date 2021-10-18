@@ -197,9 +197,9 @@ namespace PaskalCompiler
                 else
                 {
                     if (value.Length <= 80) // Record only the first 80 characters in identifier
-                        return new CIdentificator(value);
+                        return new CIdent(value);
                     else
-                        return new CIdentificator(value.Substring(0, 80));
+                        return new CIdent(value.Substring(0, 80));
                 }
             }
             else if(predictedSymbol == ETokenType.Oper)
@@ -549,10 +549,10 @@ namespace PaskalCompiler
         public override string ToString() { return string.Format("Operator ({0})", _vo.ToString()); }
     }
 
-    class CIdentificator : CToken
+    class CIdent : CToken
     {
         public string identName;
-        public CIdentificator(string name)
+        public CIdent(string name)
         {
             identName = name;
             _tt = ETokenType.Ident;
