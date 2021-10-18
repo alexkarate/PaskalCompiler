@@ -197,9 +197,9 @@ namespace PaskalCompiler
                 else
                 {
                     if (value.Length <= 80) // Record only the first 80 characters in identifier
-                        return new CIdent(value);
+                        return new CIdentificator(value);
                     else
-                        return new CIdent(value.Substring(0, 80));
+                        return new CIdentificator(value.Substring(0, 80));
                 }
             }
             else if(predictedSymbol == ETokenType.Oper)
@@ -314,6 +314,12 @@ namespace PaskalCompiler
                     return true;
                 case "else":
                     op = EOperator.elsesy;
+                    return true;
+                case "of":
+                    op = EOperator.ofsy;
+                    return true;
+                case "to":
+                    op = EOperator.tosy;
                     return true;
 
                 default:
@@ -471,6 +477,8 @@ namespace PaskalCompiler
         elsesy,
         dosy,
         whilesy,
+        ofsy,
+        tosy,
         endsy,
 
         integersy,
@@ -549,10 +557,10 @@ namespace PaskalCompiler
         public override string ToString() { return string.Format("Operator ({0})", _vo.ToString()); }
     }
 
-    class CIdent : CToken
+    class CIdentificator : CToken
     {
         public string identName;
-        public CIdent(string name)
+        public CIdentificator(string name)
         {
             identName = name;
             _tt = ETokenType.Ident;
