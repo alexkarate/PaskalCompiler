@@ -6,7 +6,7 @@ namespace PaskalCompiler
 {
     class ModuleLexical
     {
-        ModuleIO io;
+        public readonly ModuleIO io;
         StringBuilder currentSymbol = new StringBuilder();
         char bufferedChar = '\0';
         ETokenType predictedSymbol = ETokenType.Ident;
@@ -505,6 +505,27 @@ namespace PaskalCompiler
         }
         public override string ToString() { return "Generic token"; }
         public static CToken empty { get => new CToken(); }
+        public override bool Equals(object obj)
+        {
+            CToken token = (CToken)obj;
+            if (token == null)
+                return false;
+
+            if (token._tt != _tt)
+                return false;
+
+            switch (_tt)
+            {
+                case ETokenType.Ident:
+                    return ((CIdentificator)token).Equals(this);
+                case ETokenType.Oper:
+                    return ((COperation)token).Equals(this);
+                case ETokenType.Value:
+                    return ((CValue)token).Equals(this);
+                default:
+                    return true;
+            }
+        }
     }
 
     class CValue : CToken
@@ -544,6 +565,14 @@ namespace PaskalCompiler
 
             return string.Format(format, value.ToString()); 
         }
+        public override bool Equals(object obj)
+        {
+            CValue token = (CValue)obj;
+            if (token == null)
+                return false;
+
+            return token._vt == _vt;
+        }
     }
 
     class COperation : CToken
@@ -555,6 +584,15 @@ namespace PaskalCompiler
             _vo = op;
         }
         public override string ToString() { return string.Format("Operator ({0})", _vo.ToString()); }
+
+        public override bool Equals(object obj)
+        {
+            COperation token = (COperation)obj;
+            if (token == null)
+                return false;
+
+            return token._vo == _vo;
+        }
     }
 
     class CIdentificator : CToken
@@ -566,5 +604,13 @@ namespace PaskalCompiler
             _tt = ETokenType.Ident;
         }
         public override string ToString() { return string.Format("Identifier ({0})", identName); }
+
+        public override bool Equals(object obj)
+        {
+            CIdentificator token = (CIdentificator)obj;
+            if (token == null)
+                return false;
+            return true;
+        }
     }
 }
