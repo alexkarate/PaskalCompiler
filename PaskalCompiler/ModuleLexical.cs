@@ -251,10 +251,9 @@ namespace PaskalCompiler
 
         bool IsReserved(string value, out EOperator op)
         {
-
-            switch(value)
+            switch(value.ToLower())
             {
-                case "Program":
+                case "program":
                     op = EOperator.programsy;
                     return true;
                 case "end":
@@ -369,7 +368,7 @@ namespace PaskalCompiler
 
         bool IsLogical(string value, out bool read)
         {
-            switch(value)
+            switch(value.ToLower())
             {
                 case "True":
                     read = true;
