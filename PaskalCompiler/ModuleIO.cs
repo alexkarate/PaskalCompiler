@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 namespace PaskalCompiler
 {
@@ -59,6 +60,34 @@ namespace PaskalCompiler
         public void RecordError(ErrorInformation errorInfo) 
         {
             Errors.Add(new Error(errorInfo, lineCounter, charCounter));
+        }
+
+        public string GenerateListing()
+        {
+            int lineCount = 1, nextErrorId = -1;
+            if (Errors.Count != 0)
+                nextErrorId = 0;
+            if (file != null)
+            {
+                file.Seek(0, SeekOrigin.Begin);
+                StreamReader reader = new StreamReader(file);
+                StringBuilder listing = new StringBuilder();
+                while(!reader.EndOfStream)
+                {
+                    listing.AppendLine(string.Format("{0, 4} {1}", lineCount, reader.ReadLine()));
+                    while(nextErrorId != -1 && Errors[nextErrorId].lineNum == lineCount)
+                    {
+                        listing.AppendLine(string.Format("Error {0}: {1}. Line {2}, Character {3}.", nextErrorId + 1, Errors[nextErrorId].info.Message, lineCount, Errors[nextErrorId].charNum));
+                        nextErrorId++;
+                        if (nextErrorId == Errors.Count)
+                            nextErrorId = -1;
+                    }
+                    lineCount++;
+                }
+                return listing.ToString();
+            }
+            else
+                return string.Empty;
         }
     }
 
