@@ -266,18 +266,6 @@ namespace PaskalCompiler
                 case "var":
                     op = EOperator.varsy;
                     return true;
-                case "integer":
-                    op = EOperator.integersy;
-                    return true;
-                case "boolean":
-                    op = EOperator.booleansy;
-                    return true;
-                case "real":
-                    op = EOperator.realsy;
-                    return true;
-                case "char":
-                    op = EOperator.charsy;
-                    return true;
 
                 case "div":
                     op = EOperator.divsy;
@@ -479,11 +467,6 @@ namespace PaskalCompiler
         ofsy,
         tosy,
         endsy,
-
-        integersy,
-        booleansy,
-        realsy,
-        charsy,
     }
 
     enum EVarType
@@ -506,7 +489,7 @@ namespace PaskalCompiler
         public static CToken empty { get => new CToken(); }
         public override bool Equals(object obj)
         {
-            CToken token = (CToken)obj;
+            CToken token = obj as CToken;
             if (token == null)
                 return false;
 
@@ -535,7 +518,10 @@ namespace PaskalCompiler
         {
             _tt = ETokenType.Value;
             _vt = type;
-            this.value = value;
+            if (value != null)
+                this.value = value;
+            else
+                this.value = "Any";
         }
         public override string ToString()
         {
@@ -566,7 +552,7 @@ namespace PaskalCompiler
         }
         public override bool Equals(object obj)
         {
-            CValue token = (CValue)obj;
+            CValue token = obj as CValue;
             if (token == null)
                 return false;
 
@@ -586,12 +572,26 @@ namespace PaskalCompiler
 
         public override bool Equals(object obj)
         {
-            COperation token = (COperation)obj;
+            COperation token = obj as COperation;
             if (token == null)
                 return false;
 
             return token._vo == _vo;
         }
+
+        public bool IsAdditive()
+        {
+            return _vo == EOperator.plus || _vo == EOperator.minus || _vo == EOperator.orsy;
+        }
+        public bool IsMultiplicative()
+        {
+            return _vo == EOperator.star || _vo == EOperator.slash || _vo == EOperator.divsy || _vo == EOperator.modsy || _vo == EOperator.andsy;
+        }
+        public bool IsRelative()
+        {
+            return _vo == EOperator.equals || _vo == EOperator.notequals || _vo == EOperator.greater || _vo == EOperator.greaterequals || _vo == EOperator.less || _vo == EOperator.lessequals;
+        }
+
     }
 
     class CIdentificator : CToken
@@ -602,11 +602,17 @@ namespace PaskalCompiler
             identName = name;
             _tt = ETokenType.Ident;
         }
-        public override string ToString() { return string.Format("Identifier ({0})", identName); }
+        public override string ToString() 
+        {
+            if (!string.IsNullOrEmpty(identName))
+                return string.Format("Identifier ({0})", identName);
+            else
+                return "Identifier";
+        }
 
         public override bool Equals(object obj)
         {
-            CIdentificator token = (CIdentificator)obj;
+            CIdentificator token = obj as CIdentificator;
             if (token == null)
                 return false;
             return true;
