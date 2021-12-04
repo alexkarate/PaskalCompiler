@@ -703,7 +703,7 @@ namespace PaskalCompiler
             this.current = current;
         }
     }
-    // Semantic exceptions Exceptions
+    // Semantic Exceptions
     class SemanticException : CompilerException
         {
         public SemanticException() : base("Generic semantic exception.") { }
