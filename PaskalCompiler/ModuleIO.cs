@@ -56,7 +56,10 @@ namespace PaskalCompiler
                 charCounter++;
             return c;
         }
-
+        public void RecordError(string error)
+        {
+            Errors.Add(new Error(new ErrorInformation(error), lineCounter, charCounter));
+        }
         public void RecordError(ErrorInformation errorInfo) 
         {
             Errors.Add(new Error(errorInfo, lineCounter, charCounter));
@@ -77,7 +80,7 @@ namespace PaskalCompiler
                     listing.AppendLine(string.Format("{0, 4} {1}", lineCount, reader.ReadLine()));
                     while(nextErrorId != -1 && Errors[nextErrorId].lineNum == lineCount)
                     {
-                        listing.AppendLine(string.Format("Error {0}: {1}. Line {2}, Character {3}.", nextErrorId + 1, Errors[nextErrorId].info.Message, lineCount, Errors[nextErrorId].charNum));
+                        listing.AppendLine(string.Format("Error {0}: {1} Line {2}, Character {3}.", nextErrorId + 1, Errors[nextErrorId].info.Message, lineCount, Errors[nextErrorId].charNum));
                         nextErrorId++;
                         if (nextErrorId == Errors.Count)
                             nextErrorId = -1;
