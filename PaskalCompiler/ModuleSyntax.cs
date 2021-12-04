@@ -150,9 +150,11 @@ namespace PaskalCompiler
             {
                 for (int i = 0; i < token.Length; i++)
                 {
-                    if (curSymbol.Equals(token[i]) || curSymbol.Equals(CToken.empty))
+                    if (curSymbol.Equals(token[i]))
                         skip = false;
                 }
+                if (curSymbol.Equals(CToken.empty))
+                    skip = false;
                 if (skip)
                     curSymbol = lexer.NextSym();
             }
