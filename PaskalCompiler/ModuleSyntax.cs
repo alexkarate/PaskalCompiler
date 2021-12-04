@@ -9,11 +9,10 @@ namespace PaskalCompiler
     {
         ModuleLexical lexer;
         CToken curSymbol;
-        bool skipToNext = false;
         bool analyzed = false;
 
         List<Scope> scopes;
-        CType intType, realType, boolType, charType, stringType;
+        CType intType, realType, boolType, charType, stringType, unknownType = null;
         public ModuleSyntax(ModuleLexical lexer)
         {
             this.lexer = lexer;
@@ -42,7 +41,7 @@ namespace PaskalCompiler
             }
             else
             {
-                throw new InvalidSymbolException(curSymbol, token);
+                throw new InvalidSymbolException(token, curSymbol);
             }
         }
         COperation Oper(EOperator op)
@@ -131,29 +130,57 @@ namespace PaskalCompiler
             {
                 Program();
             }
+            catch(CompilerException e)
+            {
+                IO.RecordError(e.Message);
+            }
             catch(Exception e)
             {
                 Console.WriteLine(e.Message);
             }
             if (curSymbol._tt != ETokenType.None)
-                lexer.io.RecordError(new ErrorInformation("More tokens than expected"));
+                IO.RecordError("More tokens than expected");
             analyzed = true;
         }
+
+        void SkipUntilToken(CToken[] token)
+        {
+            bool skip = true;
+            while(skip)
+            {
+                for (int i = 0; i < token.Length; i++)
+                {
+                    if (curSymbol.Equals(token[i]) || curSymbol.Equals(CToken.empty))
+                        skip = false;
+                }
+                if (skip)
+                    curSymbol = lexer.NextSym();
+            }
+        }
+
         void Program()
         {
             PushScope();
-            Accept(Oper(EOperator.programsy));
-            Accept(Ident());
-            if (curSymbol.Equals(Ident()))
+            try
             {
+                Accept(Oper(EOperator.programsy));
                 Accept(Ident());
-                while (curSymbol.Equals(Oper(EOperator.comma)))
+                if (curSymbol.Equals(Ident()))
                 {
-                    Accept(Oper(EOperator.comma));
                     Accept(Ident());
+                    while (curSymbol.Equals(Oper(EOperator.comma)))
+                    {
+                        Accept(Oper(EOperator.comma));
+                        Accept(Ident());
+                    }
                 }
+                Accept(Oper(EOperator.semicolon));
             }
-            Accept(Oper(EOperator.semicolon));
+            catch(CompilerException e)
+            {
+                IO.RecordError(e.Message);
+                SkipUntilToken(new CToken[] { Oper(EOperator.beginsy), Oper(EOperator.varsy)});
+            }
             Block();
             Accept(Oper(EOperator.dot));
         }
@@ -162,9 +189,25 @@ namespace PaskalCompiler
             //Labels();
             //Constants();
             //Types();
-            Variables();
+            try
+            {
+                Variables();
+            }
+            catch(CompilerException e)
+            {
+                IO.RecordError(e.Message);
+                SkipUntilToken(new CToken[] { Oper(EOperator.beginsy), Oper(EOperator.dot) });
+            }
             //Functions();
-            Operators();
+            try
+            {
+                Operators();
+            }
+            catch(CompilerException e)
+            {
+                IO.RecordError(e.Message);
+                SkipUntilToken(new CToken[] { Oper(EOperator.dot) });
+            }
         }
         void Operators()
         {
@@ -176,7 +219,10 @@ namespace PaskalCompiler
             {
                 CIdentInfo ident = FindIdentifier(curSymbol);
                 if (ident == null)
-                    throw new UndeclaredIdentificatorException(curSymbol as CIdentificator);
+                {
+                    IO.RecordError(new UndeclaredIdentificatorException(curSymbol as CIdentificator).Message);
+                    ident = AddIdentifier((curSymbol as CIdentificator).identName, IdentUseType.iVar, unknownType);
+                }
                 else if (ident.useType != IdentUseType.iVar)
                     throw new VariableNotFoundException(ident);
 
@@ -184,6 +230,13 @@ namespace PaskalCompiler
                 Accept(Ident());
                 Accept(Oper(EOperator.assignSy));
                 CType r = Expression();
+                if (r == unknownType)
+                    return;
+                else if(l == unknownType)
+                {
+                    ident.type = r;
+                    l = r;
+                }
                 if (!r.isDerivedTo(l))
                     throw new UnderivableTypeException(l, r);
             }
@@ -203,12 +256,43 @@ namespace PaskalCompiler
 
         void CompoundOperator()
         {
-            Accept(Oper(EOperator.beginsy));
-            Operator();
+            try
+            {
+                Accept(Oper(EOperator.beginsy));
+            }
+            catch(CompilerException e)
+            {
+                IO.RecordError(e.Message);
+                SkipUntilToken(new CToken[] { Oper(EOperator.beginsy), Oper(EOperator.endsy) });
+                if (curSymbol.Equals(Oper(EOperator.beginsy)))
+                    Accept(Oper(EOperator.beginsy));
+            }
+            try
+            {
+                Operator();
+            }
+            catch (CompilerException e)
+            {
+                IO.RecordError(e.Message);
+                SkipUntilToken(new CToken[] { Oper(EOperator.semicolon), Oper(EOperator.endsy) });
+            }
             while(curSymbol.Equals(Oper(EOperator.semicolon)))
             {
-                Accept(Oper(EOperator.semicolon));
-                Operator();
+                Accept(Oper(EOperator.semicolon)); 
+                try
+                {
+                    Operator();
+                }
+                catch (CompilerException e)
+                {
+                    IO.RecordError(e.Message);
+                    SkipUntilToken(new CToken[] { Oper(EOperator.semicolon), Oper(EOperator.endsy) });
+                }
+                if(!curSymbol.Equals(Oper(EOperator.semicolon)) && !curSymbol.Equals(Oper(EOperator.endsy)))
+                {
+                    IO.RecordError(new InvalidSymbolException(Oper(EOperator.semicolon), curSymbol).Message);
+                    SkipUntilToken(new CToken[] { Oper(EOperator.semicolon), Oper(EOperator.endsy) });
+                }
             }
             Accept(Oper(EOperator.endsy));
         }
@@ -245,7 +329,7 @@ namespace PaskalCompiler
             {
                 Accept(Oper(oper._vo));
                 CType r = SimpleExpression();
-                if (!r.isDerivedTo(l) && !l.isDerivedTo(r))
+                if (l != unknownType && r != unknownType && !r.isDerivedTo(l) && !l.isDerivedTo(r))
                     throw new UnderivableTypeException(l, r);
                 l = boolType;
             }
@@ -260,10 +344,17 @@ namespace PaskalCompiler
             {
                 Accept(Oper(oper._vo));
                 CType r = Term();
-                if (l.isDerivedTo(r))
+                if (l == unknownType)
+                    r = l;
+                if (r == unknownType)
                     l = r;
-                else if (!r.isDerivedTo(l))
-                    throw new UnderivableTypeException(l, r);
+                if(l != unknownType && r != unknownType)
+                {
+                    if (l.isDerivedTo(r))
+                        l = r;
+                    else if (!r.isDerivedTo(l))
+                        throw new UnderivableTypeException(l, r);
+                }
                 oper = curSymbol as COperation;
             }
             return l;
@@ -277,10 +368,17 @@ namespace PaskalCompiler
             {
                 Accept(Oper(oper._vo));
                 CType r = Factor();
-                if (l.isDerivedTo(r))
+                if (l == unknownType)
+                    r = l;
+                if (r == unknownType)
                     l = r;
-                else if (!r.isDerivedTo(l))
-                    throw new UnderivableTypeException(l, r);
+                if (l != unknownType && r != unknownType)
+                {
+                    if (l.isDerivedTo(r))
+                        l = r;
+                    else if (!r.isDerivedTo(l))
+                        throw new UnderivableTypeException(l, r);
+                }
                 oper = curSymbol as COperation;
             }
             return l;
@@ -292,7 +390,10 @@ namespace PaskalCompiler
             {
                 CIdentInfo ident = FindIdentifier(curSymbol);
                 if (ident == null)
-                    throw new IdentificatorNotFoundException(curSymbol);
+                {
+                    IO.RecordError(new UndeclaredIdentificatorException(curSymbol as CIdentificator).Message);
+                    ident = AddIdentifier((curSymbol as CIdentificator).identName, IdentUseType.iVar, unknownType);
+                }
                 else if (ident.useType == IdentUseType.iClass)
                     throw new VariableNotFoundException(ident);
                 Accept(Ident());
@@ -302,13 +403,26 @@ namespace PaskalCompiler
             {
                 CType t;
                 Accept(Oper(EOperator.openBr));
-                t = Expression();
+                try
+                {
+                    t = Expression();
+                }
+                catch(CompilerException e)
+                {
+                    IO.RecordError(e.Message);
+                    SkipUntilToken(new CToken[] { Oper(EOperator.closeBr), Oper(EOperator.semicolon), Oper(EOperator.endsy) });
+                    t = unknownType;
+                }
                 Accept(Oper(EOperator.closeBr));
                 return t;
             }
-            else
+            else if(curSymbol is CValue)
                 return ConstNoSign();
-                
+            else
+            {
+                throw new InvalidExpressionException(curSymbol);
+            }
+
         }
 
         CType ConstNoSign()
@@ -406,50 +520,6 @@ namespace PaskalCompiler
         }
         
     }
-    class SyntaxException : ApplicationException
-    {
-        public SyntaxException() : base("Generic syntax exception.") { }
-        public SyntaxException(string s) : base(s) { }
-    }
-    class SemanticException : ApplicationException
-    {
-        public SemanticException() : base("Generic semantic exception.") { }
-        public SemanticException(string s) : base(s) { }
-    }
-    class UnderivableTypeException : SemanticException
-    {
-        public UnderivableTypeException(CType l, CType r) : base(string.Format("Type {0} is not derivable to {1}", r._tt, l._tt)) { }
-    }
-    class UndeclaredIdentificatorException : SemanticException
-    {
-        public UndeclaredIdentificatorException(CIdentificator ident) : base(string.Format("Identificator {0} not found", ident.identName)) { }
-    }
-
-    class VariableNotFoundException : SemanticException
-    {
-        public VariableNotFoundException(CIdentInfo info) : base(string.Format("Expected to find variable, found {0}", info.type)) { }
-    }
-
-    class IdentificatorNotFoundException : SemanticException
-    {
-        public IdentificatorNotFoundException(CToken token) : base(string.Format("Expected to find identificator, found {0}", token)) { }
-    }
-
-    class ClassNotFoundException : SemanticException
-    {
-        public ClassNotFoundException(string identName) : base(string.Format("Could not find class {0}", identName)) { }
-    }
-
-    class InvalidSymbolException : SemanticException
-    {
-        public CToken expected, current;
-        public InvalidSymbolException(CToken expected, CToken current) : base(string.Format("Expected {0}, got {1}.", expected, current))
-        {
-            this.expected = expected;
-            this.current = current;
-        }
-    }
-
     enum EType
     {
         et_integer,
@@ -610,5 +680,59 @@ namespace PaskalCompiler
             typeTable.Add(newType);
             return newType;
         }
+    }
+    class CompilerException : ApplicationException 
+    {
+        public CompilerException() : base("Generic compiler exception.") { }
+        public CompilerException(string s) : base(s) { }
+    }
+    // Syntax Exceptions
+    class SyntaxException : CompilerException
+    {
+        public SyntaxException() : base("Generic syntax exception.") { }
+        public SyntaxException(string s) : base(s) { }
+    }
+    class InvalidSymbolException : SyntaxException
+        {
+        public CToken expected, current;
+        public InvalidSymbolException(CToken expected, CToken current) : base(string.Format("Expected {0}, got {1}.", expected, current))
+        {
+            this.expected = expected;
+            this.current = current;
+        }
+    }
+    // Semantic exceptions Exceptions
+    class SemanticException : CompilerException
+        {
+        public SemanticException() : base("Generic semantic exception.") { }
+        public SemanticException(string s) : base(s) { }
+    }
+    class UnderivableTypeException : SemanticException
+    {
+        public UnderivableTypeException(CType l, CType r) : base(string.Format("Type {0} is not derivable to {1}.", r._tt, l._tt)) { }
+    }
+    class UndeclaredIdentificatorException : SemanticException
+    {
+        public UndeclaredIdentificatorException(CIdentificator ident) : base(string.Format("Identificator {0} not found.", ident.identName)) { }
+    }
+
+    class VariableNotFoundException : SemanticException
+    {
+        public VariableNotFoundException(CIdentInfo info) : base(string.Format("Expected to find variable, found {0}.", info.type)) { }
+    }
+
+    class IdentificatorNotFoundException : SemanticException
+    {
+        public IdentificatorNotFoundException(CToken token) : base(string.Format("Expected to find identificator, found {0}.", token)) { }
+    }
+
+    class ClassNotFoundException : SemanticException
+    {
+        public ClassNotFoundException(string identName) : base(string.Format("Could not find class {0}.", identName)) { }
+    }
+
+    class InvalidExpressionException : SemanticException
+    {
+        public InvalidExpressionException(CToken token) : base(string.Format("Token {0} cannot be a part of expression.", token)) { }
     }
 }
