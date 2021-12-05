@@ -489,22 +489,40 @@ namespace PaskalCompiler
         {
             List<CToken> varList = new List<CToken>();
             varList.Add(curSymbol);
-            Accept(Ident());
-            while(curSymbol.Equals(Oper(EOperator.comma)))
+            try
             {
-                Accept(Oper(EOperator.comma));
-                varList.Add(curSymbol);
                 Accept(Ident());
+
+                while (curSymbol.Equals(Oper(EOperator.comma)))
+                {
+                    Accept(Oper(EOperator.comma));
+                    CToken t = curSymbol;
+                    Accept(Ident());
+                    varList.Add(t);
+                }
             }
-            Accept(Oper(EOperator.colon));
-            var type = SingleType();
-            CIdentificator identificator;
-            for(int i = 0; i < varList.Count; i++)
+            catch(CompilerException e)
             {
-                identificator = varList[i] as CIdentificator;
-                if (identificator == null)
-                    throw new IdentificatorNotFoundException(varList[i]);
-                AddIdentifier(identificator.identName, IdentUseType.iVar, type);
+                IO.RecordError(e.Message);
+                SkipUntilToken(new CToken[] { Oper(EOperator.semicolon), Oper(EOperator.beginsy), Oper(EOperator.colon) });
+            }
+            try
+            {
+                Accept(Oper(EOperator.colon));
+                var type = SingleType();
+                CIdentificator identificator;
+                for (int i = 0; i < varList.Count; i++)
+                {
+                    identificator = varList[i] as CIdentificator;
+                    if (identificator == null)
+                        throw new IdentificatorNotFoundException(varList[i]);
+                    AddIdentifier(identificator.identName, IdentUseType.iVar, type);
+                }
+            }
+            catch(CompilerException e)
+            {
+                IO.RecordError(e.Message);
+                SkipUntilToken(new CToken[] { Oper(EOperator.semicolon), Oper(EOperator.beginsy) });
             }
         }
         CType SingleType()

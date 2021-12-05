@@ -6,7 +6,7 @@ namespace PaskalCompiler
     {
         static void Main(string[] args)
         {
-            ModuleSyntax compiler = new ModuleSyntax("D:\\pascal\\variablesErr2.pas");
+            ModuleSyntax compiler = new ModuleSyntax("D:\\pascal\\operators.pas");
             Console.WriteLine(compiler.GenerateListing());
         }
     }
