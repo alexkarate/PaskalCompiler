@@ -152,7 +152,7 @@ namespace PaskalCompiler
                 Console.WriteLine(e.Message);
             }
             if (!curSymbol._tt.Equals(ETokenType.None))
-                IO.RecordError("More tokens than expected");
+                IO.RecordError("More tokens than expected.");
             analyzed = true;
         }
 

@@ -485,7 +485,7 @@ namespace PaskalCompiler
         {
             _tt = ETokenType.None;
         }
-        public override string ToString() { return "Generic token"; }
+        public override string ToString() { return "Empty token"; }
         public static CToken empty { get => new CToken(); }
         public override bool Equals(object obj)
         {
