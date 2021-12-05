@@ -59,7 +59,7 @@ namespace PaskalCompiler
             return new CValue(type, null);
         }
 
-        void GenerateDefaultContext()
+        void GenerateDefaultScope()
         {
             scopes = new List<Scope>();
             PushScope();
@@ -125,7 +125,7 @@ namespace PaskalCompiler
 
         public void CheckProgram()
         {
-            GenerateDefaultContext();
+            GenerateDefaultScope();
             try
             {
                 Program();
@@ -138,7 +138,7 @@ namespace PaskalCompiler
             {
                 Console.WriteLine(e.Message);
             }
-            if (curSymbol._tt != ETokenType.None)
+            if (!curSymbol._tt.Equals(ETokenType.None))
                 IO.RecordError("More tokens than expected");
             analyzed = true;
         }
@@ -181,7 +181,7 @@ namespace PaskalCompiler
             catch(CompilerException e)
             {
                 IO.RecordError(e.Message);
-                SkipUntilToken(new CToken[] { Oper(EOperator.beginsy), Oper(EOperator.varsy)});
+                SkipUntilToken(new CToken[] { Oper(EOperator.varsy), Oper(EOperator.beginsy)});
             }
             Block();
             Accept(Oper(EOperator.dot));
@@ -232,15 +232,16 @@ namespace PaskalCompiler
                 Accept(Ident());
                 Accept(Oper(EOperator.assignSy));
                 CType r = Expression();
-                if (r == unknownType)
-                    return;
-                else if(l == unknownType)
+                if (r != unknownType)
                 {
-                    ident.type = r;
-                    l = r;
+                    if (l == unknownType)
+                    {
+                        ident.type = r;
+                        l = r;
+                    }
+                    else if (!r.isDerivedTo(l))
+                        throw new UnderivableTypeException(l, r);
                 }
-                if (!r.isDerivedTo(l))
-                    throw new UnderivableTypeException(l, r);
             }
             else if (curSymbol.Equals(Oper(EOperator.beginsy)))
             {
@@ -302,8 +303,8 @@ namespace PaskalCompiler
         {
             Accept(Oper(EOperator.ifsy));
             CType t = Expression();
-            if (!t.isDerivedTo(boolType))
-                throw new UnderivableTypeException(boolType, t);
+            if (t != unknownType && !t.isDerivedTo(boolType))
+                IO.RecordError(new UnderivableTypeException(boolType, t).Message);
             Accept(Oper(EOperator.thensy));
             Operator();
             if(curSymbol.Equals(Oper(EOperator.elsesy)))
@@ -317,8 +318,8 @@ namespace PaskalCompiler
         {
             Accept(Oper(EOperator.whilesy));
             CType t = Expression();
-            if (!t.isDerivedTo(boolType))
-                throw new UnderivableTypeException(boolType, t);
+            if (t != unknownType && !t.isDerivedTo(boolType))
+                IO.RecordError(new UnderivableTypeException(boolType, t).Message);
             Accept(Oper(EOperator.dosy));
             Operator();
         }
@@ -516,8 +517,11 @@ namespace PaskalCompiler
             Accept(Ident());
             CIdentInfo ident = FindIdentifier(t);
             if (ident == null || ident.useType != IdentUseType.iClass)
-                throw new ClassNotFoundException(ident.name);
-            
+            {
+                string name = (t as CIdentificator).identName;
+                IO.RecordError(new TypeNotFoundException(name).Message);
+                return unknownType;
+            }
             return ident.type;
         }
         
@@ -728,9 +732,9 @@ namespace PaskalCompiler
         public IdentificatorNotFoundException(CToken token) : base(string.Format("Expected to find identificator, found {0}.", token)) { }
     }
 
-    class ClassNotFoundException : SemanticException
+    class TypeNotFoundException : SemanticException
     {
-        public ClassNotFoundException(string identName) : base(string.Format("Could not find class {0}.", identName)) { }
+        public TypeNotFoundException(string identName) : base(string.Format("Could not find type {0}.", identName)) { }
     }
 
     class InvalidExpressionException : SemanticException
