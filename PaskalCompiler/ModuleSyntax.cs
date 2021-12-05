@@ -122,10 +122,23 @@ namespace PaskalCompiler
                 scopes.Remove(scopes.Last());
         }
 
+        CToken[] operOrEndList;
+
+        public void CreateTokenLists()
+        {
+            operOrEndList = new CToken[] { 
+                Ident(), 
+                Oper(EOperator.ifsy), 
+                Oper(EOperator.whilesy), 
+                Oper(EOperator.beginsy), 
+                Oper(EOperator.endsy) 
+            };
+        }
 
         public void CheckProgram()
         {
             GenerateDefaultScope();
+            CreateTokenLists();
             try
             {
                 Program();
@@ -310,7 +323,15 @@ namespace PaskalCompiler
             CType t = Expression();
             if (t != unknownType && !t.isDerivedTo(boolType))
                 IO.RecordError(new UnderivableTypeException(boolType, t).Message);
-            Accept(Oper(EOperator.thensy));
+            try
+            {
+                Accept(Oper(EOperator.thensy));
+            }
+            catch(CompilerException e)
+            {
+                IO.RecordError(e.Message);
+                SkipUntilToken(operOrEndList);
+            }
             Operator();
             if(curSymbol.Equals(Oper(EOperator.elsesy)))
             {
@@ -325,7 +346,15 @@ namespace PaskalCompiler
             CType t = Expression();
             if (t != unknownType && !t.isDerivedTo(boolType))
                 IO.RecordError(new UnderivableTypeException(boolType, t).Message);
-            Accept(Oper(EOperator.dosy));
+            try
+            {
+                Accept(Oper(EOperator.dosy));
+            }
+            catch(CompilerException e)
+            {
+                IO.RecordError(e.Message);
+                SkipUntilToken(operOrEndList);
+            }
             Operator();
         }
 
