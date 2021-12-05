@@ -279,6 +279,11 @@ namespace PaskalCompiler
                 IO.RecordError(e.Message);
                 SkipUntilToken(new CToken[] { Oper(EOperator.semicolon), Oper(EOperator.endsy) });
             }
+            if(!curSymbol.Equals(Oper(EOperator.semicolon)) && !curSymbol.Equals(Oper(EOperator.endsy)))
+            {
+                IO.RecordError(new InvalidSymbolException(Oper(EOperator.semicolon), curSymbol).Message);
+                SkipUntilToken(new CToken[] { Oper(EOperator.semicolon), Oper(EOperator.endsy) });
+            }
             while(curSymbol.Equals(Oper(EOperator.semicolon)))
             {
                 Accept(Oper(EOperator.semicolon)); 
