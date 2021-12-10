@@ -147,7 +147,7 @@ namespace PaskalCompiler
                                 {
                                     c = char.ToLower(c);
                                     string value = currentSymbol.ToString();
-                                    if (c == 'e' && value.Contains('.') && !value.Contains('e'))
+                                    if (c == 'e' && value.Contains(".") && !value.Contains("e"))
                                         currentSymbol.Append(c);
                                     else
                                     {
