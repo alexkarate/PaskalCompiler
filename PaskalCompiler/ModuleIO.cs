@@ -64,6 +64,10 @@ namespace PaskalCompiler
         {
             Errors.Add(new Error(errorInfo, lineCounter, charCounter));
         }
+        public void RecordError(Exception e)
+        {
+            Errors.Add(new Error(new ErrorInformation(e.Message), lineCounter, charCounter));
+        }
 
         public string GenerateListing()
         {

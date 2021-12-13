@@ -6,7 +6,7 @@ namespace PaskalCompiler
     {
         static void Main(string[] args)
         {
-            ModuleSyntax compiler = new ModuleSyntax("D:\\pascal\\generator2.pas");
+            ModuleSyntax compiler = new ModuleSyntax("D:\\pascal\\generator4.pas");
             compiler.CompileProgram();
             Console.WriteLine(compiler.GenerateListing());
         }

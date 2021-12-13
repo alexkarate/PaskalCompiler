@@ -16,6 +16,34 @@ namespace PaskalCompiler
             this.io = io;
         }
 
+        void PredictSymbol(char c)
+        {
+            if (IsIdentBegin(c)) 
+            {
+                currentSymbol.Append(c);
+                predictedSymbol = ETokenType.Ident;
+            }
+            else if (IsAllowedSymbol(c)) 
+            {
+                currentSymbol.Append(c);
+                predictedSymbol = ETokenType.Oper;
+            }
+            else if (c == '\'') 
+            {
+                currentSymbol.Append(c);
+                predictedSymbol = ETokenType.Value;
+                predictedType = EVarType.vtChar;
+            }
+            else if (char.IsNumber(c)) 
+            {
+                currentSymbol.Append(c);
+                predictedSymbol = ETokenType.Value;
+                predictedType = EVarType.vtInt;
+            }
+            else if (!char.IsWhiteSpace(c)) // Skip whitespace
+                io.RecordError(new IncorrectCharacterException(c));
+        }
+
         public CToken NextSym()
         {
             // Buffer from previous iteration
@@ -34,47 +62,18 @@ namespace PaskalCompiler
                 // If this is a new symbol
                 if(currentSymbol.Length == 0)
                 {
-                    EOperator op;
-                    if (IsIdentBegin(c)) // Identifier or reserved words
-                    {
-                        currentSymbol.Append(c);
-                        predictedSymbol = ETokenType.Ident;
-                    }
-                    else if (IsSingularSymbol(c, out op)) // Symbols that exist in only one operation
-                    {
-                        return new COperation(op);
-                    }
-                    else if(IsMultipleSymbol(c)) // Symbols that exist in multiple operations
-                    {
-                        currentSymbol.Append(c);
-                        predictedSymbol = ETokenType.Oper;
-                    }
-                    else if(c == '\'') // String or char constant
-                    {
-                        currentSymbol.Append(c);
-                        predictedSymbol = ETokenType.Value;
-                        predictedType = EVarType.vtChar;
-                    }
-                    else if(char.IsNumber(c)) // Number constant
-                    {
-                        currentSymbol.Append(c);
-                        predictedSymbol = ETokenType.Value;
-                        predictedType = EVarType.vtInt;
-                    }
-                    else if(!char.IsWhiteSpace(c)) // Skip whitespace
-                        io.RecordError(new IncorrectCharacterError(c));
+                    PredictSymbol(c);
                 }
                 else
                 {
+                    if (char.IsWhiteSpace(c) && predictedType != EVarType.vtChar && predictedType != EVarType.vtString) // On whitespace resolve the symbol for non-string types
+                        break;
+
                     if (predictedSymbol == ETokenType.Ident)
                     {
-                        if (char.IsWhiteSpace(c)) // On whitespace resolve the symbol
-                            break;
-                        if (IsIdent(c)) // If current is identifier, then accept all symbols that can be in an identifier
-                        {
+                        if (ShouldAcceptIntoIdent(c))
                             currentSymbol.Append(c);
-                        }
-                        else // End of identifier
+                        else
                         {
                             bufferedChar = c;
                             break;
@@ -82,90 +81,32 @@ namespace PaskalCompiler
                     }
                     else if(predictedSymbol == ETokenType.Oper)
                     {
-                        if (char.IsWhiteSpace(c)) // On whitespace resolve the symbol
-                            break;
-                        EOperator t;
-                        if(IsMultipleSymbol(c))// If current is operation, then accept all symbols, as long as the new operation exists
-                        {
+                        if(ShouldAcceptIntoOper(c))
                             currentSymbol.Append(c);
-                            if (!IsOperator(currentSymbol.ToString(), out t))
-                            {
-                                currentSymbol.Remove(currentSymbol.Length - 1, 1);
-                                bufferedChar = c;
-                                break;
-                            }
-                        }
                         else
                         {
                             bufferedChar = c;
                             break;
                         }
+                        
                     }
                     else if(predictedSymbol == ETokenType.Value)
                     {
-                        if(predictedType == EVarType.vtChar || predictedType == EVarType.vtString) // If current is string constant, then accept all symbols until a quote character
+                        if(predictedType == EVarType.vtChar || predictedType == EVarType.vtString)
                         {
-                            bool end = false;
-                            if (c == '\'')
-                            {
+                            if (ShouldAcceptIntoString(c))
                                 currentSymbol.Append(c);
-                                c = io.NextChar();
-                                continue;
-                            }
-                            else if (currentSymbol[currentSymbol.Length - 1] == '\'') // Accept only pairs of quotes ('' => '). Otherwise resolve the string
-                            {
-                                int quoteCount = 0;
-                                for (int i = currentSymbol.Length - 1; i > 0; i--)
-                                {
-                                    if (currentSymbol[i] == '\'')
-                                        quoteCount++;
-                                    else
-                                        break;
-                                }
-                                end = quoteCount % 2 != 0;
-                            }
-                            if(end)
+                            else
                             {
                                 bufferedChar = c;
                                 break;
-                            }
-                            else
-                                currentSymbol.Append(c);
+                            }    
+                            
                         }
-                        else if(predictedType == EVarType.vtInt || predictedType == EVarType.vtReal) // If current is a number, then accept all digits
+                        else if(predictedType == EVarType.vtInt || predictedType == EVarType.vtReal)
                         {
-                            if (char.IsDigit(c))
+                            if(ShouldAcceptIntoNumber(c))
                                 currentSymbol.Append(c);
-                            else if(c == '.' || char.ToLower(c) == 'e')
-                            {
-                                if(predictedType == EVarType.vtInt) // If we encountered a dot or an e while current is an integer, then change current to real
-                                {
-                                    currentSymbol.Append(char.ToLower(c));
-                                    predictedType = EVarType.vtReal;
-                                }
-                                else // If current is real, then the only allowed format is (int).(int)e(int). Otherwise, resolve the symbol.
-                                {
-                                    c = char.ToLower(c);
-                                    string value = currentSymbol.ToString();
-                                    if (c == 'e' && value.Contains(".") && !value.Contains("e"))
-                                        currentSymbol.Append(c);
-                                    else
-                                    {
-                                        bufferedChar = c;
-                                        break;
-                                    }
-                                }
-                            }
-                            else if(c == '-' || c == '+'  && predictedType == EVarType.vtReal) // If we encounter a + or - after e, then it's part of the number. Otherwise, resolve the symbol
-                            {
-                                if (currentSymbol[currentSymbol.Length - 1] == 'e')
-                                    currentSymbol.Append(c);
-                                else
-                                {
-                                    bufferedChar = c;
-                                    break;
-                                }
-                            }
                             else
                             {
                                 bufferedChar = c;
@@ -174,7 +115,7 @@ namespace PaskalCompiler
                         }
                     }
                     else
-                        io.RecordError(new IncorrectCharacterError(c));
+                        io.RecordError(new IncorrectCharacterException(c));
                 }
                 c = io.NextChar();
             }
@@ -185,7 +126,7 @@ namespace PaskalCompiler
             {
                 EOperator op;
                 string value = currentSymbol.ToString();
-                if(IsReserved(value, out op)) // If identifier is reserved then return a symbol
+                if(IsReserved(value, out op))
                 {
                     return new COperation(op);
                 }
@@ -234,9 +175,60 @@ namespace PaskalCompiler
             }
             return CToken.empty;
         }
-        class IncorrectCharacterError : ErrorInformation
+
+        bool ShouldAcceptIntoIdent(char c)
         {
-            public IncorrectCharacterError(char c) : base(string.Format("incorrect character '{0}'", c)) { }
+            return IsIdentBegin(c) || char.IsNumber(c);
+        }
+        bool ShouldAcceptIntoOper(char c)
+        {
+            if (IsMultipleSymbol(c))// If current is operation, then accept all symbols, as long as the new operation exists
+                return IsOperator(currentSymbol.ToString() + c);
+            else
+                return false;
+        }
+
+        bool ShouldAcceptIntoString(char c)
+        {
+            if (c == '\'')
+                return true; //Accept all adjacent quotes
+            else if (currentSymbol[currentSymbol.Length - 1] == '\'') // Accept only pairs of quotes ('' => '). Otherwise resolve the string
+            {
+                int quoteCount = 0;
+                for (int i = currentSymbol.Length - 1; i > 0; i--)
+                {
+                    if (currentSymbol[i] == '\'')
+                        quoteCount++;
+                    else
+                        break;
+                }
+                return quoteCount % 2 == 0;
+            }
+            return true;
+        }
+        bool ShouldAcceptIntoNumber(char c)
+        {
+            if (char.IsDigit(c))
+                return true;
+
+            if (c == '.' || char.ToLower(c) == 'e')
+            {
+                if (predictedType == EVarType.vtInt) // If we encountered a dot or an e while current is an integer, then change current to real
+                {
+                    predictedType = EVarType.vtReal;
+                    return true;
+                }
+                else // If current is real, then the only allowed format is (int).(int)e(int). Otherwise, resolve the symbol.
+                {
+                    c = char.ToLower(c);
+                    string value = currentSymbol.ToString();
+                    return c == 'e' && value.Contains(".") && !value.Contains("e");
+                }
+            }
+            else if (c == '-' || c == '+' && predictedType == EVarType.vtReal) // If we encounter a + or - after e, then it's part of the number. Otherwise, resolve the symbol
+                return currentSymbol[currentSymbol.Length - 1] == 'e';
+            else
+                return false;
         }
 
         void ReplacePairsOfQuotes(StringBuilder str)
@@ -312,6 +304,8 @@ namespace PaskalCompiler
 
         bool IsOperator(string value, out EOperator op)
         {
+            if (value.Length == 1 && IsSingularSymbol(value[0], out op))
+                return true;
             switch(value)
             {
                 case ":=":
@@ -348,6 +342,11 @@ namespace PaskalCompiler
             }
                
         }
+        bool IsOperator(string s)
+        {
+            EOperator op;
+            return IsOperator(s, out op);
+        }
         bool IsSingularSymbol(char c, out EOperator op)
         {
             switch (c)
@@ -381,20 +380,24 @@ namespace PaskalCompiler
                     return false;
             }
         }
+        bool IsSingularSymbol(char c)
+        {
+            EOperator op;
+            return IsSingularSymbol(c, out op);
+        }
 
         bool IsMultipleSymbol(char c)
         {
             return c == ':' || c == '=' || c == '<' || c == '>' || c == '.';
         }
+        bool IsAllowedSymbol(char c)
+        {
+            return IsMultipleSymbol(c) || IsSingularSymbol(c);
+        }
 
         bool IsIdentBegin(char c)
         {
             return Regex.IsMatch(c.ToString(), @"^[a-zA-Z_]+$");
-        }
-        
-        bool IsIdent(char c)
-        {
-            return IsIdentBegin(c) || char.IsNumber(c);
         }
     }
     enum ETokenType
@@ -607,5 +610,14 @@ namespace PaskalCompiler
                 return false;
             return true;
         }
+    }
+    class LexerException : CompilerException
+    {
+        public LexerException() : base("Generic lexical exception.") { }
+        public LexerException(string s) : base(s) { }
+    }
+    class IncorrectCharacterException : LexerException
+    {
+        public IncorrectCharacterException(char c) : base(string.Format("incorrect character '{0}'", c)) { }
     }
 }

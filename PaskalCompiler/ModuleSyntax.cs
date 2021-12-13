@@ -88,9 +88,11 @@ namespace PaskalCompiler
             var falseConst = AddIdentifier("false", IdentUseType.iConst, boolType);
             var trueConst = AddIdentifier("true", IdentUseType.iConst, boolType);
             AddBooleanConsts(falseConst, trueConst);
+
             falseConst = AddIdentifier("False", IdentUseType.iConst, boolType);
             trueConst = AddIdentifier("True", IdentUseType.iConst, boolType);
             AddBooleanConsts(falseConst, trueConst);
+
             AddIdentifier("writeln", IdentUseType.iFunc, voidType);
         }
         int fieldCounter = 0;
@@ -98,6 +100,7 @@ namespace PaskalCompiler
         {
             if(useType == IdentUseType.iClass || useType == IdentUseType.iFunc || type == unknownType || type == voidType)
                 return scopes.Last().AddIdentifier(name, useType, type);
+
             FieldBuilder fb = typeBuilder.DefineField(name + '_' + fieldCounter++, type.OutputType, FieldAttributes.Static | FieldAttributes.Private);
             return scopes.Last().AddIdentifier(name, useType, type, fb);
         }
@@ -235,7 +238,7 @@ namespace PaskalCompiler
                     break;
             }
         }
-        void EmitMultiplicative(EOperator op, CType t)
+        void EmitMultiplicative(EOperator op, CType rightType)
         {
             switch (op)
             {
@@ -243,8 +246,8 @@ namespace PaskalCompiler
                     methodILGenerator.Emit(OpCodes.Mul);
                     break;
                 case EOperator.slash:
-                    if (t._tt != EType.et_real)
-                        EmitConvert(t, realType);
+                    if (rightType._tt != EType.et_real)
+                        EmitConvert(rightType, realType);
                     methodILGenerator.Emit(OpCodes.Div);
                     break;
                 case EOperator.divsy:
@@ -277,12 +280,12 @@ namespace PaskalCompiler
             }
             methodILGenerator.Emit(OpCodes.Call, concat);
         }
-        void EmitWriteLine(CType t)
+        void EmitWriteLine(CType expressionType)
         {
-            Type newT = t.OutputType;
-            if (newT == typeof(void))
+            Type exprType = expressionType.OutputType;
+            if (exprType == typeof(void))
                 return;
-            var writeLine = typeof(Console).GetMethod("WriteLine", new Type[] { newT });
+            var writeLine = typeof(Console).GetMethod("WriteLine", new Type[] { exprType });
             methodILGenerator.Emit(OpCodes.Call, writeLine);
         }
         void EmitConvert(CType from, CType to)
@@ -324,14 +327,15 @@ namespace PaskalCompiler
             }
             catch(CompilerException e)
             {
-                IO.RecordError(e.Message);
+                IO.RecordError(e);
             }
             catch(Exception e)
             {
-                Console.WriteLine(e.Message);
+                IO.RecordError(e);
+                Console.WriteLine(e);
             }
-            if (!curSymbol._tt.Equals(ETokenType.None))
-                IO.RecordError(new UnexpectedTokenException(curSymbol).Message);
+            if (curSymbol._tt != ETokenType.None)
+                IO.RecordError(new UnexpectedTokenException(curSymbol));
             analyzed = true;
         }
 
@@ -343,10 +347,14 @@ namespace PaskalCompiler
                 for (int i = 0; i < token.Length; i++)
                 {
                     if (curSymbol.Equals(token[i]))
+                    {
                         skip = false;
+                        break;
+                    }
                 }
                 if (curSymbol.Equals(CToken.empty))
                     skip = false;
+
                 if (skip)
                     curSymbol = lexer.NextSym();
             }
@@ -359,6 +367,7 @@ namespace PaskalCompiler
             {
                 Accept(Oper(EOperator.programsy));
                 Accept(Ident());
+                
                 if (curSymbol.Equals(Ident()))
                 {
                     Accept(Ident());
@@ -368,13 +377,15 @@ namespace PaskalCompiler
                         Accept(Ident());
                     }
                 }
+                
                 Accept(Oper(EOperator.semicolon));
             }
             catch(CompilerException e)
             {
-                IO.RecordError(e.Message);
+                IO.RecordError(e);
                 SkipUntilToken(new CToken[] { Oper(EOperator.varsy), Oper(EOperator.beginsy)});
             }
+
             Block();
             Accept(Oper(EOperator.dot));
         }
@@ -389,7 +400,7 @@ namespace PaskalCompiler
             }
             catch(CompilerException e)
             {
-                IO.RecordError(e.Message);
+                IO.RecordError(e);
                 SkipUntilToken(new CToken[] { Oper(EOperator.beginsy), Oper(EOperator.dot) });
             }
             //Functions();
@@ -399,7 +410,7 @@ namespace PaskalCompiler
             }
             catch(CompilerException e)
             {
-                IO.RecordError(e.Message);
+                IO.RecordError(e);
                 SkipUntilToken(new CToken[] { Oper(EOperator.dot) });
             }
         }
@@ -414,26 +425,29 @@ namespace PaskalCompiler
                 CIdentInfo ident = FindIdentifier(curSymbol);
                 if (ident == null)
                 {
-                    IO.RecordError(new UndeclaredIdentificatorException(curSymbol as CIdentificator).Message);
+                    IO.RecordError(new UndeclaredIdentificatorException(curSymbol as CIdentificator));
                     ident = AddIdentifier((curSymbol as CIdentificator).identName, IdentUseType.iVar, unknownType);
                 }
                 else if(ident.useType == IdentUseType.iFunc && ident.name == "writeln")
                 {
                     Accept(Ident());
                     Accept(Oper(EOperator.openBr));
+                    
                     CType t = Expression();
-                     EmitWriteLine(t);
+                    EmitWriteLine(t);
+                    
                     Accept(Oper(EOperator.closeBr));
                     return;
                 }
                 else if (ident.useType != IdentUseType.iVar)
-                    IO.RecordError(new VariableNotFoundException(ident).Message);
+                    IO.RecordError(new VariableNotFoundException(ident));
 
                 CType l = ident.type;
                 Accept(Ident());
 
                 Accept(Oper(EOperator.assignSy));
                 CType r = Expression();
+                
                 if (r != unknownType)
                 {
                     if (l == unknownType)
@@ -442,7 +456,7 @@ namespace PaskalCompiler
                         l = r;
                     }
                     else if (!r.isDerivedTo(l))
-                        IO.RecordError(new UnderivableTypeException(l, r).Message);
+                        IO.RecordError(new UnderivableTypeException(l, r));
                     else if(ident.fb != null)
                     {
                         if(r != l)
@@ -475,8 +489,9 @@ namespace PaskalCompiler
             }
             catch(CompilerException e)
             {
-                IO.RecordError(e.Message);
+                IO.RecordError(e);
                 SkipUntilToken(new CToken[] { Oper(EOperator.beginsy), Oper(EOperator.endsy) });
+                
                 if (curSymbol.Equals(Oper(EOperator.beginsy)))
                     Accept(Oper(EOperator.beginsy));
             }
@@ -486,12 +501,12 @@ namespace PaskalCompiler
             }
             catch (CompilerException e)
             {
-                IO.RecordError(e.Message);
+                IO.RecordError(e);
                 SkipUntilToken(new CToken[] { Oper(EOperator.semicolon), Oper(EOperator.endsy) });
             }
             if(!curSymbol.Equals(Oper(EOperator.semicolon)) && !curSymbol.Equals(Oper(EOperator.endsy)))
             {
-                IO.RecordError(new InvalidSymbolException(Oper(EOperator.semicolon), curSymbol).Message);
+                IO.RecordError(new InvalidSymbolException(Oper(EOperator.semicolon), curSymbol));
                 SkipUntilToken(new CToken[] { Oper(EOperator.semicolon), Oper(EOperator.endsy) });
             }
             while(curSymbol.Equals(Oper(EOperator.semicolon)))
@@ -503,12 +518,12 @@ namespace PaskalCompiler
                 }
                 catch (CompilerException e)
                 {
-                    IO.RecordError(e.Message);
+                    IO.RecordError(e);
                     SkipUntilToken(new CToken[] { Oper(EOperator.semicolon), Oper(EOperator.endsy) });
                 }
                 if(!curSymbol.Equals(Oper(EOperator.semicolon)) && !curSymbol.Equals(Oper(EOperator.endsy)))
                 {
-                    IO.RecordError(new InvalidSymbolException(Oper(EOperator.semicolon), curSymbol).Message);
+                    IO.RecordError(new InvalidSymbolException(Oper(EOperator.semicolon), curSymbol));
                     SkipUntilToken(new CToken[] { Oper(EOperator.semicolon), Oper(EOperator.endsy) });
                 }
             }
@@ -518,24 +533,30 @@ namespace PaskalCompiler
         {
             var falseLabel = methodILGenerator.DefineLabel();
             var endLabel = methodILGenerator.DefineLabel();
+            
             Accept(Oper(EOperator.ifsy));
             CType t = Expression();
+            
             if (t != unknownType && !t.isDerivedTo(boolType))
-                IO.RecordError(new UnderivableTypeException(t, boolType).Message);
+                IO.RecordError(new UnderivableTypeException(t, boolType));
+            
             try
             {
                 Accept(Oper(EOperator.thensy));
             }
             catch(CompilerException e)
             {
-                IO.RecordError(e.Message);
+                IO.RecordError(e);
                 SkipUntilToken(operOrEndList);
             }
             methodILGenerator.Emit(OpCodes.Brfalse_S, falseLabel);
+            
             Operator();
             if (curSymbol.Equals(Oper(EOperator.semicolon)))
                 Accept(Oper(EOperator.semicolon));
+            
             methodILGenerator.Emit(OpCodes.Br_S, endLabel);
+            
             if (curSymbol.Equals(Oper(EOperator.elsesy)))
             {
                 Accept(Oper(EOperator.elsesy));
@@ -545,6 +566,7 @@ namespace PaskalCompiler
             }
             else
                 methodILGenerator.MarkLabel(falseLabel);
+            
             methodILGenerator.MarkLabel(endLabel);
         }
 
@@ -552,11 +574,15 @@ namespace PaskalCompiler
         {
             var startLabel = methodILGenerator.DefineLabel();
             var endLabel = methodILGenerator.DefineLabel();
+            
             Accept(Oper(EOperator.whilesy));
             methodILGenerator.MarkLabel(startLabel);
+            
             CType t = Expression();
+            
             if (t != unknownType && !t.isDerivedTo(boolType))
-                IO.RecordError(new UnderivableTypeException(t, boolType).Message);
+                IO.RecordError(new UnderivableTypeException(t, boolType));
+            
             methodILGenerator.Emit(OpCodes.Brfalse_S, endLabel);
             try
             {
@@ -564,11 +590,12 @@ namespace PaskalCompiler
             }
             catch(CompilerException e)
             {
-                IO.RecordError(e.Message);
+                IO.RecordError(e);
                 SkipUntilToken(operOrEndList);
             }
 
             Operator();
+            
             methodILGenerator.Emit(OpCodes.Br_S, startLabel);
             methodILGenerator.MarkLabel(endLabel);
         }
@@ -577,16 +604,18 @@ namespace PaskalCompiler
         {
             CType l = SimpleExpression(), r = unknownType;
             COperation oper = curSymbol as COperation;
+            
             if (oper != null && oper.IsRelative())
             {
                 Accept(Oper(oper._vo));
                 r = SimpleExpression();
+                
                 if (l != unknownType && r != unknownType)
                 {
                     if (!r.isDerivedTo(l) && !l.isDerivedTo(r))
-                        IO.RecordError(new UnderivableTypeException(l, r).Message);
+                        IO.RecordError(new UnderivableTypeException(l, r));
                     else if (!l.isDerivedTo(r, oper))
-                        IO.RecordError(new UnderivableTypeException(l, r, oper).Message);
+                        IO.RecordError(new UnderivableTypeException(l, r, oper));
                 }
                 l = boolType;
 
@@ -599,6 +628,7 @@ namespace PaskalCompiler
             Sign();
             CType l = Term();
             COperation oper = curSymbol as COperation;
+            
             while (oper != null && oper.IsAdditive())
             {
                 Accept(Oper(oper._vo));
@@ -610,13 +640,15 @@ namespace PaskalCompiler
                 if(l != unknownType && r != unknownType)
                 {
                     if (!l.isDerivedTo(r) && !r.isDerivedTo(l))
-                        IO.RecordError(new UnderivableTypeException(l, r).Message);
+                        IO.RecordError(new UnderivableTypeException(l, r));
                     else if (!l.isDerivedTo(r, oper))
-                        IO.RecordError(new UnderivableTypeException(l, r, oper).Message);
+                        IO.RecordError(new UnderivableTypeException(l, r, oper));
+                    
                     if (l != stringType && r != stringType)
                         EmitAdditive(oper._vo);
                     else
                         EmitConcat(l, r);
+                    
                     if (l.isDerivedTo(r))
                         l = r;
 
@@ -630,22 +662,25 @@ namespace PaskalCompiler
         {
             CType l = Factor();
             COperation oper = curSymbol as COperation;
+            
             while(oper != null && oper.IsMultiplicative())
             {
                 Accept(Oper(oper._vo));
                 CType r = Factor();
                 if (l == unknownType)
                     r = l;
+                
                 if (r == unknownType)
                     l = r;
+                
                 if (l != unknownType && r != unknownType)
                 {
                     if (l.isDerivedTo(r))
                         l = r;
                     else if (!r.isDerivedTo(l))
-                        IO.RecordError(new UnderivableTypeException(l, r).Message);
+                        IO.RecordError(new UnderivableTypeException(l, r));
                     else if (!l.isDerivedTo(r, oper))
-                        IO.RecordError(new UnderivableTypeException(l, r, oper).Message);
+                        IO.RecordError(new UnderivableTypeException(l, r, oper));
                 }
                 EmitMultiplicative(oper._vo, r);
                 oper = curSymbol as COperation;
@@ -658,17 +693,19 @@ namespace PaskalCompiler
             if (curSymbol.Equals(Ident()))
             {
                 CIdentInfo ident = FindIdentifier(curSymbol);
+                
                 if (ident == null)
                 {
-                    IO.RecordError(new UndeclaredIdentificatorException(curSymbol as CIdentificator).Message);
+                    IO.RecordError(new UndeclaredIdentificatorException(curSymbol as CIdentificator));
                     ident = AddIdentifier((curSymbol as CIdentificator).identName, IdentUseType.iVar, unknownType);
                 }
                 else if (ident.useType == IdentUseType.iClass)
-                    IO.RecordError(new VariableNotFoundException(ident).Message);
+                    IO.RecordError(new VariableNotFoundException(ident));
                 else if(ident.fb != null)
                 {
                     methodILGenerator.Emit(OpCodes.Ldsfld, ident.fb);
                 }
+                
                 Accept(Ident());
                 return ident.type;
             }
@@ -682,7 +719,7 @@ namespace PaskalCompiler
                 }
                 catch(CompilerException e)
                 {
-                    IO.RecordError(e.Message);
+                    IO.RecordError(e);
                     SkipUntilToken(new CToken[] { Oper(EOperator.closeBr), Oper(EOperator.semicolon), Oper(EOperator.endsy) });
                     t = unknownType;
                 }
@@ -693,7 +730,7 @@ namespace PaskalCompiler
                 return ConstNoSign(curSymbol as CValue);
             else
             {
-                IO.RecordError(new InvalidExpressionException(curSymbol).Message);
+                IO.RecordError(new InvalidExpressionException(curSymbol));
                 return unknownType;
             }
         }
@@ -706,14 +743,17 @@ namespace PaskalCompiler
                     methodILGenerator.Emit(OpCodes.Ldstr, (string)c.value);
                     Accept(Value(c._vt));
                     return stringType;
+                
                 case EVarType.vtChar:
                     methodILGenerator.Emit(OpCodes.Ldc_I4, Convert.ToUInt32((char)c.value));
                     Accept(Value(c._vt));
                     return charType;
+                
                 case EVarType.vtBoolean:
                     methodILGenerator.Emit(OpCodes.Ldc_I4, Convert.ToInt32((bool)c.value));
                     Accept(Value(c._vt));
                     return boolType;
+                
                 default:
                     return NumberNoSign(c);
             }
@@ -726,12 +766,14 @@ namespace PaskalCompiler
                     methodILGenerator.Emit(OpCodes.Ldc_I4, (int)c.value);
                     Accept(Value(EVarType.vtInt));
                     return intType;
+                
                 case EVarType.vtReal:
                     methodILGenerator.Emit(OpCodes.Ldc_R4, (float)c.value);
                     Accept(Value(EVarType.vtReal));
                     return realType;
+                
                 default:
-                    IO.RecordError(new ExpectedNumberConstantException(c._vt).Message);
+                    IO.RecordError(new ExpectedNumberConstantException(c._vt));
                     return unknownType;
             }
         }
@@ -751,6 +793,7 @@ namespace PaskalCompiler
                 Accept(Oper(EOperator.varsy));
                 SingleTypeVariable();
                 Accept(Oper(EOperator.semicolon));
+                
                 while(curSymbol.Equals(Ident()))
                 {
                     SingleTypeVariable();
@@ -777,26 +820,29 @@ namespace PaskalCompiler
             }
             catch(CompilerException e)
             {
-                IO.RecordError(e.Message);
+                IO.RecordError(e);
                 SkipUntilToken(new CToken[] { Oper(EOperator.semicolon), Oper(EOperator.beginsy), Oper(EOperator.colon) });
             }
             try
             {
                 Accept(Oper(EOperator.colon));
                 var type = SingleType();
+                
                 CIdentificator identificator;
                 for (int i = 0; i < varList.Count; i++)
                 {
                     identificator = varList[i] as CIdentificator;
                     if (identificator == null)
-                        IO.RecordError(new IdentificatorNotFoundException(varList[i]).Message);
-                    else
+                        IO.RecordError(new IdentificatorNotFoundException(varList[i]));
+                    else if (FindIdentifier(identificator.identName) != null)
+                        IO.RecordError(new IdentificatorAlreadyExistsException(identificator));
+                    else    
                         AddIdentifier(identificator.identName, IdentUseType.iVar, type);
                 }
             }
             catch(CompilerException e)
             {
-                IO.RecordError(e.Message);
+                IO.RecordError(e);
                 SkipUntilToken(new CToken[] { Oper(EOperator.semicolon), Oper(EOperator.beginsy) });
             }
         }
@@ -809,10 +855,11 @@ namespace PaskalCompiler
             CToken t = curSymbol;
             Accept(Ident());
             CIdentInfo ident = FindIdentifier(t);
+            
             if (ident == null || ident.useType != IdentUseType.iClass)
             {
                 string name = (t as CIdentificator).identName;
-                IO.RecordError(new TypeNotFoundException(name).Message);
+                IO.RecordError(new TypeNotFoundException(name));
                 return unknownType;
             }
             return ident.type;
@@ -1021,8 +1068,6 @@ namespace PaskalCompiler
 
     class Scope
     {
-        //public Dictionary<string, Name?> 
-        //public Dictionary<Name?, CIdentInfo> identifierTable;
         public Dictionary<string, CIdentInfo> identifierTable;
         public List<CType> typeTable;
 
@@ -1108,14 +1153,14 @@ namespace PaskalCompiler
     }
     // Semantic Exceptions
     class SemanticException : CompilerException
-        {
+    {
         public SemanticException() : base("Generic semantic exception.") { }
         public SemanticException(string s) : base(s) { }
     }
     class UnderivableTypeException : SemanticException
     {
         public UnderivableTypeException(CType l, CType r) : base(string.Format("Type {0} is not derivable to {1}.", r._tt, l._tt)) { }
-        public UnderivableTypeException(CType l, CType r, COperation op) : base(string.Format("{0} cannot be applied to {1} and {2}", op, l._tt, r._tt)) { }
+        public UnderivableTypeException(CType l, CType r, COperation op) : base(string.Format("{0} cannot be applied to {1} and {2}.", op, l._tt, r._tt)) { }
     }
     class UndeclaredIdentificatorException : SemanticException
     {
@@ -1131,6 +1176,10 @@ namespace PaskalCompiler
     {
         public IdentificatorNotFoundException(CToken token) : base(string.Format("Expected to find identificator, found {0}.", token)) { }
     }
+    class IdentificatorAlreadyExistsException : SemanticException
+    {
+        public IdentificatorAlreadyExistsException(CIdentificator ident) : base(string.Format("Identificator '{0}' already exists.", ident.identName)) { }
+    }
 
     class TypeNotFoundException : SemanticException
     {
@@ -1143,10 +1192,10 @@ namespace PaskalCompiler
     }
     class ExpectedNumberConstantException : SemanticException
     {
-        public ExpectedNumberConstantException(EVarType t) : base(string.Format("Expected a number constant, got {0}", t)) { }
+        public ExpectedNumberConstantException(EVarType t) : base(string.Format("Expected a number constant, got {0}.", t)) { }
     }
     class UnexpectedTokenException : SemanticException
     {
-        public UnexpectedTokenException(CToken token) : base(string.Format("Expected end of program, got {0}", token)) { }
+        public UnexpectedTokenException(CToken token) : base(string.Format("Expected end of program, got {0}.", token)) { }
     }
 }
