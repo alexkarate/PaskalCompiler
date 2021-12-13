@@ -557,7 +557,18 @@ namespace PaskalCompiler
 
             return token._vo == _vo;
         }
-
+        public bool IsBinary()
+        {
+            return _vo == EOperator.orsy || _vo == EOperator.andsy;
+        }
+        public bool IsEquals()
+        {
+            return _vo == EOperator.equals || _vo == EOperator.notequals;
+        }
+        public bool IsIntegerDivision()
+        {
+            return _vo == EOperator.divsy || _vo == EOperator.modsy;
+        }
         public bool IsAdditive()
         {
             return _vo == EOperator.plus || _vo == EOperator.minus || _vo == EOperator.orsy;

@@ -731,6 +731,7 @@ namespace PaskalCompiler
     abstract class CType
     {
         public abstract bool isDerivedTo(CType b);
+        public abstract bool isDerivedTo(CType b, COperation op);
         public EType _tt;
         public override bool Equals(object obj)
         {
@@ -764,6 +765,14 @@ namespace PaskalCompiler
                 return true;
             return false;
         }
+        public override bool isDerivedTo(CType b, COperation op)
+        {
+            if (!isDerivedTo(b))
+                return false;
+            if (op.IsAdditive() || op.IsMultiplicative() || op.IsRelative())
+                return true;
+            return false;
+        }
     }
     class CRealType : CType
     {
@@ -774,6 +783,16 @@ namespace PaskalCompiler
         public override bool isDerivedTo(CType b)
         {
             if (b._tt == EType.et_real || b._tt == EType.et_string)
+                return true;
+            return false;
+        }
+        public override bool isDerivedTo(CType b, COperation op)
+        {
+            if (!isDerivedTo(b))
+                return false;
+            if (op.IsBinary() || op.IsIntegerDivision())
+                return false;
+            if (op.IsAdditive() || op.IsMultiplicative() || op.IsRelative())
                 return true;
             return false;
         }
@@ -791,6 +810,14 @@ namespace PaskalCompiler
                 return true;
             return false;
         }
+        public override bool isDerivedTo(CType b, COperation op)
+        {
+            if (!isDerivedTo(b))
+                return false;
+            if (op.IsBinary() || op.IsEquals())
+                return true;
+            return false;
+        }
     }
 
     class CCharType : CType
@@ -802,6 +829,14 @@ namespace PaskalCompiler
         public override bool isDerivedTo(CType b)
         {
             if (b._tt == EType.et_char || b._tt == EType.et_string)
+                return true;
+            return false;
+        }
+        public override bool isDerivedTo(CType b, COperation op)
+        {
+            if (!isDerivedTo(b))
+                return false;
+            if (op.IsBinary() || op.IsAdditive() || op.IsRelative())
                 return true;
             return false;
         }
@@ -819,6 +854,14 @@ namespace PaskalCompiler
                 return true;
             return false;
         }
+        public override bool isDerivedTo(CType b, COperation op)
+        {
+            if (!isDerivedTo(b))
+                return false;
+            if (op._vo == EOperator.plus || op.IsRelative())
+                return true;
+            return false;
+        }
     }
 
     class CVoidType : CType
@@ -831,6 +874,10 @@ namespace PaskalCompiler
         {
             return false;
         }
+        public override bool isDerivedTo(CType b, COperation op)
+        {
+            return isDerivedTo(b);
+        }
     }
 
     class CUnknownType : CType
@@ -842,6 +889,10 @@ namespace PaskalCompiler
         public override bool isDerivedTo(CType b)
         {
             return true;
+        }
+        public override bool isDerivedTo(CType b, COperation op)
+        {
+            return isDerivedTo(b);
         }
     }
 
