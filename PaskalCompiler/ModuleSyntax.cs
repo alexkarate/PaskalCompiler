@@ -93,9 +93,6 @@ namespace PaskalCompiler
             AddBooleanConsts(falseConst, trueConst);
             AddIdentifier("writeln", IdentUseType.iFunc, voidType);
         }
-        void AddDefaultValues()
-        {
-        }
         int fieldCounter = 0;
         CIdentInfo AddIdentifier(string name, IdentUseType useType, CType type)
         {
@@ -271,7 +268,7 @@ namespace PaskalCompiler
             {
                 methodILGenerator.Emit(OpCodes.Box, r.OutputType);
             }
-            if(l._tt != EType.et_string)
+            if(l._tt != EType.et_string) 
             {
                 var t = methodILGenerator.DeclareLocal(typeof(object));
                 methodILGenerator.Emit(OpCodes.Stloc, t);
@@ -320,7 +317,6 @@ namespace PaskalCompiler
             CreateGenerator();
             GenerateDefaultScope();
             CreateTokenLists();
-            AddDefaultValues();
             
             try
             {
@@ -520,6 +516,8 @@ namespace PaskalCompiler
         }
         void ChooseOperator()
         {
+            var falseLabel = methodILGenerator.DefineLabel();
+            var endLabel = methodILGenerator.DefineLabel();
             Accept(Oper(EOperator.ifsy));
             CType t = Expression();
             if (t != unknownType && !t.isDerivedTo(boolType))
@@ -533,20 +531,33 @@ namespace PaskalCompiler
                 IO.RecordError(e.Message);
                 SkipUntilToken(operOrEndList);
             }
+            methodILGenerator.Emit(OpCodes.Brfalse_S, falseLabel);
             Operator();
-            if(curSymbol.Equals(Oper(EOperator.elsesy)))
+            if (curSymbol.Equals(Oper(EOperator.semicolon)))
+                Accept(Oper(EOperator.semicolon));
+            methodILGenerator.Emit(OpCodes.Br_S, endLabel);
+            if (curSymbol.Equals(Oper(EOperator.elsesy)))
             {
                 Accept(Oper(EOperator.elsesy));
+
+                methodILGenerator.MarkLabel(falseLabel);
                 Operator();
             }
+            else
+                methodILGenerator.MarkLabel(falseLabel);
+            methodILGenerator.MarkLabel(endLabel);
         }
 
         void PreLoopOperator()
         {
+            var startLabel = methodILGenerator.DefineLabel();
+            var endLabel = methodILGenerator.DefineLabel();
             Accept(Oper(EOperator.whilesy));
+            methodILGenerator.MarkLabel(startLabel);
             CType t = Expression();
             if (t != unknownType && !t.isDerivedTo(boolType))
                 IO.RecordError(new UnderivableTypeException(t, boolType).Message);
+            methodILGenerator.Emit(OpCodes.Brfalse_S, endLabel);
             try
             {
                 Accept(Oper(EOperator.dosy));
@@ -556,7 +567,10 @@ namespace PaskalCompiler
                 IO.RecordError(e.Message);
                 SkipUntilToken(operOrEndList);
             }
+
             Operator();
+            methodILGenerator.Emit(OpCodes.Br_S, startLabel);
+            methodILGenerator.MarkLabel(endLabel);
         }
 
         CType Expression()
