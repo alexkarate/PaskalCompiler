@@ -264,6 +264,22 @@ namespace PaskalCompiler
                     break;
             }
         }
+        void EmitConcat(CType l, CType r)
+        {
+            var concat = typeof(String).GetMethod("Concat", new Type[] { typeof(object), typeof(object) });
+            if(r._tt != EType.et_string)
+            {
+                methodILGenerator.Emit(OpCodes.Box, r.OutputType);
+            }
+            if(l._tt != EType.et_string)
+            {
+                var t = methodILGenerator.DeclareLocal(typeof(object));
+                methodILGenerator.Emit(OpCodes.Stloc, t);
+                methodILGenerator.Emit(OpCodes.Box, l.OutputType);
+                methodILGenerator.Emit(OpCodes.Ldloc, t);
+            }
+            methodILGenerator.Emit(OpCodes.Call, concat);
+        }
         void EmitWriteLine(CType t)
         {
             Type newT = t.OutputType;
@@ -579,14 +595,18 @@ namespace PaskalCompiler
                     l = r;
                 if(l != unknownType && r != unknownType)
                 {
-                    if (l.isDerivedTo(r))
-                        l = r;
-                    else if (!r.isDerivedTo(l))
+                    if (!l.isDerivedTo(r) && !r.isDerivedTo(l))
                         IO.RecordError(new UnderivableTypeException(l, r).Message);
                     else if (!l.isDerivedTo(r, oper))
                         IO.RecordError(new UnderivableTypeException(l, r, oper).Message);
+                    if (l != stringType && r != stringType)
+                        EmitAdditive(oper._vo);
+                    else
+                        EmitConcat(l, r);
+                    if (l.isDerivedTo(r))
+                        l = r;
+
                 }
-                EmitAdditive(oper._vo);
                 oper = curSymbol as COperation;
             }
             return l;
