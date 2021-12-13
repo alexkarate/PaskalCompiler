@@ -497,7 +497,7 @@ namespace PaskalCompiler
                 Accept(Oper(oper._vo));
                 r = SimpleExpression();
                 if (l != unknownType && r != unknownType && !r.isDerivedTo(l) && !l.isDerivedTo(r))
-                    IO.RecordError(new UnderivableTypeException(l, r).Message);
+                    IO.RecordError(new UnderivableTypeException(l, r, oper).Message);
                 l = boolType;
 
                 EmitRelation(oper._vo);
@@ -522,7 +522,7 @@ namespace PaskalCompiler
                     if (l.isDerivedTo(r))
                         l = r;
                     else if (!r.isDerivedTo(l))
-                        IO.RecordError (new UnderivableTypeException(l, r).Message);
+                        IO.RecordError (new UnderivableTypeException(l, r, oper).Message);
                 }
                 EmitAdditive(oper._vo);
                 oper = curSymbol as COperation;
@@ -547,7 +547,7 @@ namespace PaskalCompiler
                     if (l.isDerivedTo(r))
                         l = r;
                     else if (!r.isDerivedTo(l))
-                        IO.RecordError(new UnderivableTypeException(l, r).Message);
+                        IO.RecordError(new UnderivableTypeException(l, r, oper).Message);
                 }
                 EmitMultiplicative(oper._vo);
                 oper = curSymbol as COperation;
@@ -1009,6 +1009,7 @@ namespace PaskalCompiler
     class UnderivableTypeException : SemanticException
     {
         public UnderivableTypeException(CType l, CType r) : base(string.Format("Type {0} is not derivable to {1}.", r._tt, l._tt)) { }
+        public UnderivableTypeException(CType l, CType r, COperation op) : base(string.Format("{0} cannot be applied to {1} and {2}", op, l._tt, r._tt)) { }
     }
     class UndeclaredIdentificatorException : SemanticException
     {
