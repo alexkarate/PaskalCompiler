@@ -59,7 +59,13 @@ namespace PaskalCompiler
         {
             return new CValue(type, null);
         }
-
+        void AddBooleanConsts(CIdentInfo falseC, CIdentInfo trueC)
+        {
+            methodILGenerator.Emit(OpCodes.Ldc_I4_0);
+            methodILGenerator.Emit(OpCodes.Stsfld, falseC.fb);
+            methodILGenerator.Emit(OpCodes.Ldc_I4_1);
+            methodILGenerator.Emit(OpCodes.Stsfld, trueC.fb);
+        }
         void GenerateDefaultScope()
         {
             scopes = new List<Scope>();
@@ -79,17 +85,24 @@ namespace PaskalCompiler
             AddIdentifier("char", IdentUseType.iClass, charType);
             AddIdentifier("string", IdentUseType.iClass, stringType);
 
-            AddIdentifier("false", IdentUseType.iConst, boolType);
-            AddIdentifier("False", IdentUseType.iConst, boolType);
-            AddIdentifier("true", IdentUseType.iConst, boolType);
-            AddIdentifier("True", IdentUseType.iConst, boolType);
-
+            var falseConst = AddIdentifier("false", IdentUseType.iConst, boolType);
+            var trueConst = AddIdentifier("true", IdentUseType.iConst, boolType);
+            AddBooleanConsts(falseConst, trueConst);
+            falseConst = AddIdentifier("False", IdentUseType.iConst, boolType);
+            trueConst = AddIdentifier("True", IdentUseType.iConst, boolType);
+            AddBooleanConsts(falseConst, trueConst);
             AddIdentifier("writeln", IdentUseType.iFunc, voidType);
         }
-
+        void AddDefaultValues()
+        {
+        }
+        int fieldCounter = 0;
         CIdentInfo AddIdentifier(string name, IdentUseType useType, CType type)
         {
-            return scopes.Last().AddIdentifier(name, useType, type);
+            if(useType == IdentUseType.iClass || useType == IdentUseType.iFunc || type == unknownType || type == voidType)
+                return scopes.Last().AddIdentifier(name, useType, type);
+            FieldBuilder fb = typeBuilder.DefineField(name + '_' + fieldCounter++, type.OutputType, FieldAttributes.Static | FieldAttributes.Private);
+            return scopes.Last().AddIdentifier(name, useType, type, fb);
         }
 
         CIdentInfo FindIdentifier(CToken token)
@@ -140,7 +153,7 @@ namespace PaskalCompiler
             };
         }
 
-        const string ext = ".dll";
+        const string ext = ".exe";
 
         AssemblyBuilder assemblyBuilder;
         ModuleBuilder moduleBuilder;
@@ -155,14 +168,11 @@ namespace PaskalCompiler
             typeBuilder = moduleBuilder.DefineType("Program");
             methodBuilder = typeBuilder.DefineMethod("Main", MethodAttributes.Static | MethodAttributes.Public);
             methodILGenerator = methodBuilder.GetILGenerator();
-            methodILGenerator.Emit(OpCodes.Nop);
-            methodILGenerator.EmitWriteLine("Testing...");
-            methodILGenerator.Emit(OpCodes.Ret);
-            
         }
 
         void OutputProgram()
         {
+            methodILGenerator.Emit(OpCodes.Ret);
             typeBuilder.CreateType();
             moduleBuilder.CreateGlobalFunctions();
             assemblyBuilder.SetEntryPoint(methodBuilder);
@@ -228,7 +238,7 @@ namespace PaskalCompiler
                     break;
             }
         }
-        void EmitMultiplicative(EOperator op, CType _tt)
+        void EmitMultiplicative(EOperator op, CType t)
         {
             switch (op)
             {
@@ -236,11 +246,8 @@ namespace PaskalCompiler
                     methodILGenerator.Emit(OpCodes.Mul);
                     break;
                 case EOperator.slash:
-                    if(_tt._tt == EType.et_integer)
-                    {
-                        var convert = typeof(Convert).GetMethod("ToSingle", new Type[] { typeof(int) });
-                        methodILGenerator.Emit(OpCodes.Call, convert);
-                    }
+                    if (t._tt != EType.et_real)
+                        EmitConvert(t, realType);
                     methodILGenerator.Emit(OpCodes.Div);
                     break;
                 case EOperator.divsy:
@@ -257,12 +264,47 @@ namespace PaskalCompiler
                     break;
             }
         }
+        void EmitWriteLine(CType t)
+        {
+            Type newT = t.OutputType;
+            if (newT == typeof(void))
+                return;
+            var writeLine = typeof(Console).GetMethod("WriteLine", new Type[] { newT });
+            methodILGenerator.Emit(OpCodes.Call, writeLine);
+        }
+        void EmitConvert(CType from, CType to)
+        {
+            string methodName;
+            switch (to._tt)
+            {
+                case EType.et_integer:
+                    methodName = "ToInt32";
+                    break;
+                case EType.et_real:
+                    methodName = "ToSingle";
+                    break;
+                case EType.et_boolean:
+                    methodName = "ToBoolean";
+                    break;
+                case EType.et_char:
+                    methodName = "ToUInt32";
+                    break;
+                case EType.et_string:
+                    methodName = "ToString";
+                    break;
+                default:
+                    return;
+            }
+            var convert = typeof(Convert).GetMethod(methodName, new Type[] { from.OutputType });
+            methodILGenerator.Emit(OpCodes.Call, convert);
+        }
 
         public void CheckProgram()
         {
+            CreateGenerator();
             GenerateDefaultScope();
             CreateTokenLists();
-            CreateGenerator();
+            AddDefaultValues();
             
             try
             {
@@ -277,7 +319,7 @@ namespace PaskalCompiler
                 Console.WriteLine(e.Message);
             }
             if (!curSymbol._tt.Equals(ETokenType.None))
-                IO.RecordError("More tokens than expected.");
+                IO.RecordError(new UnexpectedTokenException(curSymbol).Message);
             analyzed = true;
         }
 
@@ -367,7 +409,8 @@ namespace PaskalCompiler
                 {
                     Accept(Ident());
                     Accept(Oper(EOperator.openBr));
-                    Expression();
+                    CType t = Expression();
+                     EmitWriteLine(t);
                     Accept(Oper(EOperator.closeBr));
                     return;
                 }
@@ -388,6 +431,14 @@ namespace PaskalCompiler
                     }
                     else if (!r.isDerivedTo(l))
                         IO.RecordError(new UnderivableTypeException(l, r).Message);
+                    else if(ident.fb != null)
+                    {
+                        if(r != l)
+                        {
+                            EmitConvert(r, l);
+                        }
+                        methodILGenerator.Emit(OpCodes.Stsfld, ident.fb);
+                    }
                 }
             }
             else if (curSymbol.Equals(Oper(EOperator.beginsy)))
@@ -500,8 +551,13 @@ namespace PaskalCompiler
             {
                 Accept(Oper(oper._vo));
                 r = SimpleExpression();
-                if (l != unknownType && r != unknownType && !r.isDerivedTo(l, oper) && !l.isDerivedTo(r, oper))
-                    IO.RecordError(new UnderivableTypeException(l, r, oper).Message);
+                if (l != unknownType && r != unknownType)
+                {
+                    if (!r.isDerivedTo(l) && !l.isDerivedTo(r))
+                        IO.RecordError(new UnderivableTypeException(l, r).Message);
+                    else if (!l.isDerivedTo(r, oper))
+                        IO.RecordError(new UnderivableTypeException(l, r, oper).Message);
+                }
                 l = boolType;
 
                 EmitRelation(oper._vo);
@@ -523,10 +579,12 @@ namespace PaskalCompiler
                     l = r;
                 if(l != unknownType && r != unknownType)
                 {
-                    if (l.isDerivedTo(r, oper))
+                    if (l.isDerivedTo(r))
                         l = r;
-                    else if (!r.isDerivedTo(l, oper))
-                        IO.RecordError (new UnderivableTypeException(l, r, oper).Message);
+                    else if (!r.isDerivedTo(l))
+                        IO.RecordError(new UnderivableTypeException(l, r).Message);
+                    else if (!l.isDerivedTo(r, oper))
+                        IO.RecordError(new UnderivableTypeException(l, r, oper).Message);
                 }
                 EmitAdditive(oper._vo);
                 oper = curSymbol as COperation;
@@ -548,9 +606,11 @@ namespace PaskalCompiler
                     l = r;
                 if (l != unknownType && r != unknownType)
                 {
-                    if (l.isDerivedTo(r, oper))
+                    if (l.isDerivedTo(r))
                         l = r;
-                    else if (!r.isDerivedTo(l, oper))
+                    else if (!r.isDerivedTo(l))
+                        IO.RecordError(new UnderivableTypeException(l, r).Message);
+                    else if (!l.isDerivedTo(r, oper))
                         IO.RecordError(new UnderivableTypeException(l, r, oper).Message);
                 }
                 EmitMultiplicative(oper._vo, r);
@@ -571,6 +631,10 @@ namespace PaskalCompiler
                 }
                 else if (ident.useType == IdentUseType.iClass)
                     IO.RecordError(new VariableNotFoundException(ident).Message);
+                else if(ident.fb != null)
+                {
+                    methodILGenerator.Emit(OpCodes.Ldsfld, ident.fb);
+                }
                 Accept(Ident());
                 return ident.type;
             }
@@ -609,7 +673,7 @@ namespace PaskalCompiler
                     Accept(Value(c._vt));
                     return stringType;
                 case EVarType.vtChar:
-                    methodILGenerator.Emit(OpCodes.Ldind_U2, Convert.ToUInt16((char)c.value));
+                    methodILGenerator.Emit(OpCodes.Ldc_I4, Convert.ToUInt32((char)c.value));
                     Accept(Value(c._vt));
                     return charType;
                 case EVarType.vtBoolean:
@@ -625,11 +689,11 @@ namespace PaskalCompiler
             switch (c._vt)
             {
                 case EVarType.vtInt:
-                    methodILGenerator.Emit(OpCodes.Ldc_I4, Convert.ToInt32((int)c.value));
+                    methodILGenerator.Emit(OpCodes.Ldc_I4, (int)c.value);
                     Accept(Value(EVarType.vtInt));
                     return intType;
                 case EVarType.vtReal:
-                    methodILGenerator.Emit(OpCodes.Ldc_R4, Convert.ToInt32((float)c.value));
+                    methodILGenerator.Emit(OpCodes.Ldc_R4, (float)c.value);
                     Accept(Value(EVarType.vtReal));
                     return realType;
                 default:
@@ -737,6 +801,7 @@ namespace PaskalCompiler
         public abstract bool isDerivedTo(CType b);
         public abstract bool isDerivedTo(CType b, COperation op);
         public EType _tt;
+        public Type OutputType { get; protected set; }
         public override bool Equals(object obj)
         {
             if (obj == null)
@@ -762,6 +827,7 @@ namespace PaskalCompiler
         public CIntType()
         {
             _tt = EType.et_integer;
+            OutputType = typeof(int);
         }
         public override bool isDerivedTo(CType b)
         {
@@ -771,8 +837,6 @@ namespace PaskalCompiler
         }
         public override bool isDerivedTo(CType b, COperation op)
         {
-            if (!isDerivedTo(b))
-                return false;
             if (op.IsAdditive() || op.IsMultiplicative() || op.IsRelative())
                 return true;
             return false;
@@ -783,6 +847,7 @@ namespace PaskalCompiler
         public CRealType()
         {
             _tt = EType.et_real;
+            OutputType = typeof(float);
         }
         public override bool isDerivedTo(CType b)
         {
@@ -792,8 +857,6 @@ namespace PaskalCompiler
         }
         public override bool isDerivedTo(CType b, COperation op)
         {
-            if (!isDerivedTo(b))
-                return false;
             if (op.IsBinary() || op.IsIntegerDivision())
                 return false;
             if (op.IsAdditive() || op.IsMultiplicative() || op.IsRelative())
@@ -807,6 +870,7 @@ namespace PaskalCompiler
         public CBoolType()
         {
             _tt = EType.et_boolean;
+            OutputType = typeof(bool);
         }
         public override bool isDerivedTo(CType b)
         {
@@ -816,8 +880,6 @@ namespace PaskalCompiler
         }
         public override bool isDerivedTo(CType b, COperation op)
         {
-            if (!isDerivedTo(b))
-                return false;
             if (op.IsBinary() || op.IsEquals())
                 return true;
             return false;
@@ -829,6 +891,7 @@ namespace PaskalCompiler
         public CCharType()
         {
             _tt = EType.et_char;
+            OutputType = typeof(char);
         }
         public override bool isDerivedTo(CType b)
         {
@@ -838,8 +901,6 @@ namespace PaskalCompiler
         }
         public override bool isDerivedTo(CType b, COperation op)
         {
-            if (!isDerivedTo(b))
-                return false;
             if (op.IsBinary() || op.IsAdditive() || op.IsRelative())
                 return true;
             return false;
@@ -851,6 +912,7 @@ namespace PaskalCompiler
         public CStringType()
         {
             _tt = EType.et_string;
+            OutputType = typeof(string);
         }
         public override bool isDerivedTo(CType b)
         {
@@ -860,8 +922,6 @@ namespace PaskalCompiler
         }
         public override bool isDerivedTo(CType b, COperation op)
         {
-            if (!isDerivedTo(b))
-                return false;
             if (op._vo == EOperator.plus || op.IsRelative())
                 return true;
             return false;
@@ -873,6 +933,7 @@ namespace PaskalCompiler
         public CVoidType()
         {
             _tt = EType.et_void;
+            OutputType = typeof(void);
         }
         public override bool isDerivedTo(CType b)
         {
@@ -889,6 +950,7 @@ namespace PaskalCompiler
         public CUnknownType()
         {
             _tt = EType.et_unknown;
+            OutputType = typeof(void);
         }
         public override bool isDerivedTo(CType b)
         {
@@ -913,11 +975,13 @@ namespace PaskalCompiler
         public IdentUseType useType;
         public CType type;
         public string name;
-        public CIdentInfo(IdentUseType useType, CType type, string name)
+        public FieldBuilder fb;
+        public CIdentInfo(IdentUseType useType, CType type, string name, FieldBuilder fb)
         {
             this.useType = useType;
             this.type = type;
             this.name = name;
+            this.fb = fb;
         }
     }
 
@@ -943,12 +1007,16 @@ namespace PaskalCompiler
             else
                 return null;
         }
+        public CIdentInfo AddIdentifier(string ident, IdentUseType useType, CType type, FieldBuilder fb)
+        {
+            CIdentInfo value = new CIdentInfo(useType, type, ident, fb);
+            identifierTable.Add(ident, value);
+            return value;
+        }
 
         public CIdentInfo AddIdentifier(string ident, IdentUseType useType, CType type)
         {
-            CIdentInfo value = new CIdentInfo(useType, type, ident);
-            identifierTable.Add(ident, value);
-            return value;
+            return AddIdentifier(ident, useType, type, null);
         }
 
         public CType AddType(EType type)
@@ -1042,5 +1110,9 @@ namespace PaskalCompiler
     class ExpectedNumberConstantException : SemanticException
     {
         public ExpectedNumberConstantException(EVarType t) : base(string.Format("Expected a number constant, got {0}", t)) { }
+    }
+    class UnexpectedTokenException : SemanticException
+    {
+        public UnexpectedTokenException(CToken token) : base(string.Format("Expected end of program, got {0}", token)) { }
     }
 }
