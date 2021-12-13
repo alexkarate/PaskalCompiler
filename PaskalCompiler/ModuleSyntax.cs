@@ -1,10 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Reflection.Emit;
 
 namespace PaskalCompiler
 {
-    
     class ModuleSyntax
     {
         ModuleLexical lexer;
@@ -12,7 +13,7 @@ namespace PaskalCompiler
         bool analyzed = false;
 
         List<Scope> scopes;
-        CType intType, realType, boolType, charType, stringType, unknownType = null;
+        CType intType, realType, boolType, charType, stringType, voidType, unknownType;
         public ModuleSyntax(ModuleLexical lexer)
         {
             this.lexer = lexer;
@@ -69,6 +70,8 @@ namespace PaskalCompiler
             boolType = AddType(EType.et_boolean);
             charType = AddType(EType.et_char);
             stringType = AddType(EType.et_string);
+            voidType = AddType(EType.et_void);
+            unknownType = AddType(EType.et_unknown);
 
             AddIdentifier("integer", IdentUseType.iClass, intType);
             AddIdentifier("real", IdentUseType.iClass, realType);
@@ -80,6 +83,8 @@ namespace PaskalCompiler
             AddIdentifier("False", IdentUseType.iConst, boolType);
             AddIdentifier("true", IdentUseType.iConst, boolType);
             AddIdentifier("True", IdentUseType.iConst, boolType);
+
+            AddIdentifier("writeln", IdentUseType.iFunc, voidType);
         }
 
         CIdentInfo AddIdentifier(string name, IdentUseType useType, CType type)
@@ -124,7 +129,7 @@ namespace PaskalCompiler
 
         CToken[] operOrEndList;
 
-        public void CreateTokenLists()
+        void CreateTokenLists()
         {
             operOrEndList = new CToken[] { 
                 Ident(), 
@@ -135,10 +140,126 @@ namespace PaskalCompiler
             };
         }
 
+        const string ext = ".dll";
+
+        AssemblyBuilder assemblyBuilder;
+        ModuleBuilder moduleBuilder;
+        TypeBuilder typeBuilder;
+        MethodBuilder methodBuilder;
+        ILGenerator methodILGenerator;
+        void CreateGenerator()
+        {
+            AssemblyName aName = new AssemblyName("Program");
+            assemblyBuilder = AssemblyBuilder.DefineDynamicAssembly(aName, AssemblyBuilderAccess.RunAndSave);
+            moduleBuilder = assemblyBuilder.DefineDynamicModule(aName.Name, aName.Name + ext);
+            typeBuilder = moduleBuilder.DefineType("Program");
+            methodBuilder = typeBuilder.DefineMethod("Main", MethodAttributes.Static | MethodAttributes.Public);
+            methodILGenerator = methodBuilder.GetILGenerator();
+            methodILGenerator.Emit(OpCodes.Nop);
+            methodILGenerator.EmitWriteLine("Testing...");
+            methodILGenerator.Emit(OpCodes.Ret);
+            
+        }
+
+        void OutputProgram()
+        {
+            typeBuilder.CreateType();
+            moduleBuilder.CreateGlobalFunctions();
+            assemblyBuilder.SetEntryPoint(methodBuilder);
+            assemblyBuilder.Save(assemblyBuilder.GetName().Name + ext);
+        }
+
+        public void CompileProgram()
+        {
+            if (!analyzed)
+                CheckProgram();
+            if (IO.Errors.Count == 0)
+                OutputProgram();
+        }
+
+        void EmitRelation(EOperator op)
+        {
+            switch (op)
+            {
+                case EOperator.equals:
+                    methodILGenerator.Emit(OpCodes.Ceq);
+                    break;
+                case EOperator.greater:
+                    methodILGenerator.Emit(OpCodes.Cgt);
+                    break;
+                case EOperator.less:
+                    methodILGenerator.Emit(OpCodes.Clt);
+                    break;
+                case EOperator.notequals:
+                    methodILGenerator.Emit(OpCodes.Ceq);
+                    methodILGenerator.Emit(OpCodes.Ldc_I4_0);
+                    methodILGenerator.Emit(OpCodes.Ceq);
+                    break;
+                case EOperator.greaterequals:
+                    methodILGenerator.Emit(OpCodes.Clt);
+                    methodILGenerator.Emit(OpCodes.Ldc_I4_0);
+                    methodILGenerator.Emit(OpCodes.Ceq);
+                    break;
+                case EOperator.lessequals:
+                    methodILGenerator.Emit(OpCodes.Cgt);
+                    methodILGenerator.Emit(OpCodes.Ldc_I4_0);
+                    methodILGenerator.Emit(OpCodes.Ceq);
+                    break;
+                default:
+                    methodILGenerator.Emit(OpCodes.Nop);
+                    break;
+            }
+        }
+        void EmitAdditive(EOperator op)
+        {
+            switch (op)
+            {
+                case EOperator.plus:
+                    methodILGenerator.Emit(OpCodes.Add);
+                    break;
+                case EOperator.minus:
+                    methodILGenerator.Emit(OpCodes.Sub);
+                    break;
+                case EOperator.orsy:
+                    methodILGenerator.Emit(OpCodes.Or);
+                    break;
+                default:
+                    methodILGenerator.Emit(OpCodes.Nop);
+                    break;
+            }
+        }
+        void EmitMultiplicative(EOperator op)
+        {
+            switch (op)
+            {
+                case EOperator.star:
+                    methodILGenerator.Emit(OpCodes.Mul);
+                    break;
+                case EOperator.slash:
+                    methodILGenerator.Emit(OpCodes.Call, typeof(Convert).GetMethod("ToSingle"));
+                    methodILGenerator.Emit(OpCodes.Div);
+                    break;
+                case EOperator.divsy:
+                    methodILGenerator.Emit(OpCodes.Div);
+                    break;
+                case EOperator.modsy:
+                    methodILGenerator.Emit(OpCodes.Rem);
+                    break;
+                case EOperator.andsy:
+                    methodILGenerator.Emit(OpCodes.And);
+                    break;
+                default:
+                    methodILGenerator.Emit(OpCodes.Nop);
+                    break;
+            }
+        }
+
         public void CheckProgram()
         {
             GenerateDefaultScope();
             CreateTokenLists();
+            CreateGenerator();
+            
             try
             {
                 Program();
@@ -238,11 +359,20 @@ namespace PaskalCompiler
                     IO.RecordError(new UndeclaredIdentificatorException(curSymbol as CIdentificator).Message);
                     ident = AddIdentifier((curSymbol as CIdentificator).identName, IdentUseType.iVar, unknownType);
                 }
+                else if(ident.useType == IdentUseType.iFunc && ident.name == "writeln")
+                {
+                    Accept(Ident());
+                    Accept(Oper(EOperator.openBr));
+                    Expression();
+                    Accept(Oper(EOperator.closeBr));
+                    return;
+                }
                 else if (ident.useType != IdentUseType.iVar)
-                    throw new VariableNotFoundException(ident);
+                    IO.RecordError(new VariableNotFoundException(ident).Message);
 
                 CType l = ident.type;
                 Accept(Ident());
+
                 Accept(Oper(EOperator.assignSy));
                 CType r = Expression();
                 if (r != unknownType)
@@ -253,7 +383,7 @@ namespace PaskalCompiler
                         l = r;
                     }
                     else if (!r.isDerivedTo(l))
-                        throw new UnderivableTypeException(l, r);
+                        IO.RecordError(new UnderivableTypeException(l, r).Message);
                 }
             }
             else if (curSymbol.Equals(Oper(EOperator.beginsy)))
@@ -360,15 +490,17 @@ namespace PaskalCompiler
 
         CType Expression()
         {
-            CType l = SimpleExpression();
+            CType l = SimpleExpression(), r = unknownType;
             COperation oper = curSymbol as COperation;
             if (oper != null && oper.IsRelative())
             {
                 Accept(Oper(oper._vo));
-                CType r = SimpleExpression();
+                r = SimpleExpression();
                 if (l != unknownType && r != unknownType && !r.isDerivedTo(l) && !l.isDerivedTo(r))
-                    throw new UnderivableTypeException(l, r);
+                    IO.RecordError(new UnderivableTypeException(l, r).Message);
                 l = boolType;
+
+                EmitRelation(oper._vo);
             }
             return l;
         }
@@ -390,8 +522,9 @@ namespace PaskalCompiler
                     if (l.isDerivedTo(r))
                         l = r;
                     else if (!r.isDerivedTo(l))
-                        throw new UnderivableTypeException(l, r);
+                        IO.RecordError (new UnderivableTypeException(l, r).Message);
                 }
+                EmitAdditive(oper._vo);
                 oper = curSymbol as COperation;
             }
             return l;
@@ -414,8 +547,9 @@ namespace PaskalCompiler
                     if (l.isDerivedTo(r))
                         l = r;
                     else if (!r.isDerivedTo(l))
-                        throw new UnderivableTypeException(l, r);
+                        IO.RecordError(new UnderivableTypeException(l, r).Message);
                 }
+                EmitMultiplicative(oper._vo);
                 oper = curSymbol as COperation;
             }
             return l;
@@ -432,7 +566,7 @@ namespace PaskalCompiler
                     ident = AddIdentifier((curSymbol as CIdentificator).identName, IdentUseType.iVar, unknownType);
                 }
                 else if (ident.useType == IdentUseType.iClass)
-                    throw new VariableNotFoundException(ident);
+                    IO.RecordError(new VariableNotFoundException(ident).Message);
                 Accept(Ident());
                 return ident.type;
             }
@@ -454,45 +588,49 @@ namespace PaskalCompiler
                 return t;
             }
             else if(curSymbol is CValue)
-                return ConstNoSign();
+                return ConstNoSign(curSymbol as CValue);
             else
             {
-                throw new InvalidExpressionException(curSymbol);
+                IO.RecordError(new InvalidExpressionException(curSymbol).Message);
+                return unknownType;
             }
-
         }
 
-        CType ConstNoSign()
+        CType ConstNoSign(CValue c)
         {
-            if (curSymbol.Equals(Value(EVarType.vtString)))
+            switch (c._vt)
             {
-                Accept(Value(EVarType.vtString));
-                return stringType;
+                case EVarType.vtString:
+                    methodILGenerator.Emit(OpCodes.Ldstr, (string)c.value);
+                    Accept(Value(c._vt));
+                    return stringType;
+                case EVarType.vtChar:
+                    methodILGenerator.Emit(OpCodes.Ldind_U2, Convert.ToUInt16((char)c.value));
+                    Accept(Value(c._vt));
+                    return charType;
+                case EVarType.vtBoolean:
+                    methodILGenerator.Emit(OpCodes.Ldc_I4, Convert.ToInt32((bool)c.value));
+                    Accept(Value(c._vt));
+                    return boolType;
+                default:
+                    return NumberNoSign(c);
             }
-            else if (curSymbol.Equals(Value(EVarType.vtChar)))
-            {
-                Accept(Value(EVarType.vtChar));
-                return charType;
-            }
-            else if (curSymbol.Equals(Value(EVarType.vtBoolean)))
-            {
-                Accept(Value(EVarType.vtBoolean));
-                return boolType;
-            }
-            else
-                return NumberNoSign();
         }
-        CType NumberNoSign()
+        CType NumberNoSign(CValue c)
         {
-            if (curSymbol.Equals(Value(EVarType.vtReal)))
+            switch (c._vt)
             {
-                Accept(Value(EVarType.vtReal));
-                return realType;
-            }
-            else
-            {
-                Accept(Value(EVarType.vtInt));
-                return intType;
+                case EVarType.vtInt:
+                    methodILGenerator.Emit(OpCodes.Ldc_I4, Convert.ToInt32((int)c.value));
+                    Accept(Value(EVarType.vtInt));
+                    return intType;
+                case EVarType.vtReal:
+                    methodILGenerator.Emit(OpCodes.Ldc_R4, Convert.ToInt32((float)c.value));
+                    Accept(Value(EVarType.vtReal));
+                    return realType;
+                default:
+                    IO.RecordError(new ExpectedNumberConstantException(c._vt).Message);
+                    return unknownType;
             }
         }
 
@@ -549,8 +687,9 @@ namespace PaskalCompiler
                 {
                     identificator = varList[i] as CIdentificator;
                     if (identificator == null)
-                        throw new IdentificatorNotFoundException(varList[i]);
-                    AddIdentifier(identificator.identName, IdentUseType.iVar, type);
+                        IO.RecordError(new IdentificatorNotFoundException(varList[i]).Message);
+                    else
+                        AddIdentifier(identificator.identName, IdentUseType.iVar, type);
                 }
             }
             catch(CompilerException e)
@@ -584,13 +723,33 @@ namespace PaskalCompiler
         et_real,
         et_boolean,
         et_char,
-        et_string
+        et_string,
+        et_void,
+        et_unknown
     }
 
     abstract class CType
     {
         public abstract bool isDerivedTo(CType b);
         public EType _tt;
+        public override bool Equals(object obj)
+        {
+            if (obj == null)
+                return false;
+            CType t = obj as CType;
+            if (t == null)
+                return false;
+            return _tt == t._tt;
+        }
+        public static bool operator ==(CType l, CType r)
+        {
+            return l._tt == r._tt;
+        }
+        public static bool operator !=(CType l, CType r)
+        {
+            return l._tt != r._tt;
+        }
+
     }
 
     class CIntType : CType
@@ -662,11 +821,36 @@ namespace PaskalCompiler
         }
     }
 
+    class CVoidType : CType
+    {
+        public CVoidType()
+        {
+            _tt = EType.et_void;
+        }
+        public override bool isDerivedTo(CType b)
+        {
+            return false;
+        }
+    }
+
+    class CUnknownType : CType
+    {
+        public CUnknownType()
+        {
+            _tt = EType.et_unknown;
+        }
+        public override bool isDerivedTo(CType b)
+        {
+            return true;
+        }
+    }
+
     enum IdentUseType
     {
         iVar,
         iClass,
-        iConst
+        iConst,
+        iFunc
     }
 
     class CIdentInfo
@@ -732,6 +916,12 @@ namespace PaskalCompiler
                 case EType.et_string:
                     newType = new CStringType();
                     break;
+                case EType.et_void:
+                    newType = new CVoidType();
+                    break;
+                case EType.et_unknown:
+                    newType = new CUnknownType();
+                    break;
                 default:
                     return null;
             }
@@ -792,5 +982,9 @@ namespace PaskalCompiler
     class InvalidExpressionException : SemanticException
     {
         public InvalidExpressionException(CToken token) : base(string.Format("Token {0} cannot be a part of expression.", token)) { }
+    }
+    class ExpectedNumberConstantException : SemanticException
+    {
+        public ExpectedNumberConstantException(EVarType t) : base(string.Format("Expected a number constant, got {0}", t)) { }
     }
 }
