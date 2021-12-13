@@ -228,7 +228,7 @@ namespace PaskalCompiler
                     break;
             }
         }
-        void EmitMultiplicative(EOperator op)
+        void EmitMultiplicative(EOperator op, CType _tt)
         {
             switch (op)
             {
@@ -236,7 +236,11 @@ namespace PaskalCompiler
                     methodILGenerator.Emit(OpCodes.Mul);
                     break;
                 case EOperator.slash:
-                    methodILGenerator.Emit(OpCodes.Call, typeof(Convert).GetMethod("ToSingle"));
+                    if(_tt._tt == EType.et_integer)
+                    {
+                        var convert = typeof(Convert).GetMethod("ToSingle", new Type[] { typeof(int) });
+                        methodILGenerator.Emit(OpCodes.Call, convert);
+                    }
                     methodILGenerator.Emit(OpCodes.Div);
                     break;
                 case EOperator.divsy:
@@ -452,7 +456,7 @@ namespace PaskalCompiler
             Accept(Oper(EOperator.ifsy));
             CType t = Expression();
             if (t != unknownType && !t.isDerivedTo(boolType))
-                IO.RecordError(new UnderivableTypeException(boolType, t).Message);
+                IO.RecordError(new UnderivableTypeException(t, boolType).Message);
             try
             {
                 Accept(Oper(EOperator.thensy));
@@ -475,7 +479,7 @@ namespace PaskalCompiler
             Accept(Oper(EOperator.whilesy));
             CType t = Expression();
             if (t != unknownType && !t.isDerivedTo(boolType))
-                IO.RecordError(new UnderivableTypeException(boolType, t).Message);
+                IO.RecordError(new UnderivableTypeException(t, boolType).Message);
             try
             {
                 Accept(Oper(EOperator.dosy));
@@ -496,7 +500,7 @@ namespace PaskalCompiler
             {
                 Accept(Oper(oper._vo));
                 r = SimpleExpression();
-                if (l != unknownType && r != unknownType && !r.isDerivedTo(l) && !l.isDerivedTo(r))
+                if (l != unknownType && r != unknownType && !r.isDerivedTo(l, oper) && !l.isDerivedTo(r, oper))
                     IO.RecordError(new UnderivableTypeException(l, r, oper).Message);
                 l = boolType;
 
@@ -519,9 +523,9 @@ namespace PaskalCompiler
                     l = r;
                 if(l != unknownType && r != unknownType)
                 {
-                    if (l.isDerivedTo(r))
+                    if (l.isDerivedTo(r, oper))
                         l = r;
-                    else if (!r.isDerivedTo(l))
+                    else if (!r.isDerivedTo(l, oper))
                         IO.RecordError (new UnderivableTypeException(l, r, oper).Message);
                 }
                 EmitAdditive(oper._vo);
@@ -544,12 +548,12 @@ namespace PaskalCompiler
                     l = r;
                 if (l != unknownType && r != unknownType)
                 {
-                    if (l.isDerivedTo(r))
+                    if (l.isDerivedTo(r, oper))
                         l = r;
-                    else if (!r.isDerivedTo(l))
+                    else if (!r.isDerivedTo(l, oper))
                         IO.RecordError(new UnderivableTypeException(l, r, oper).Message);
                 }
-                EmitMultiplicative(oper._vo);
+                EmitMultiplicative(oper._vo, r);
                 oper = curSymbol as COperation;
             }
             return l;
