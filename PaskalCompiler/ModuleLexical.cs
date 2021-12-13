@@ -184,15 +184,10 @@ namespace PaskalCompiler
             if (predictedSymbol == ETokenType.Ident)
             {
                 EOperator op;
-                bool logicalRet;
                 string value = currentSymbol.ToString();
                 if(IsReserved(value, out op)) // If identifier is reserved then return a symbol
                 {
                     return new COperation(op);
-                }
-                else if(IsLogical(value, out logicalRet)) // If identifier is "True" or "False", return a constant
-                {
-                    return new CValue(EVarType.vtBoolean, logicalRet);
                 }
                 else
                 {
@@ -233,7 +228,7 @@ namespace PaskalCompiler
                 }
                 else if(predictedType == EVarType.vtReal)
                 {
-                    double value = Convert.ToDouble(currentSymbol.ToString().Replace('.', ','));
+                    float value = Convert.ToSingle(currentSymbol.ToString().Replace('.', ','));
                     return new CValue(EVarType.vtReal, value);
                 }
             }
@@ -352,22 +347,6 @@ namespace PaskalCompiler
                     return false;
             }
                
-        }
-
-        bool IsLogical(string value, out bool read)
-        {
-            switch(value.ToLower())
-            {
-                case "True":
-                    read = true;
-                    return true;
-                case "False":
-                    read = false;
-                    return true;
-                default:
-                    read = false;
-                    return false;
-            }
         }
         bool IsSingularSymbol(char c, out EOperator op)
         {
