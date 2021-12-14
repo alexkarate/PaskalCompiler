@@ -238,7 +238,7 @@ namespace PaskalCompiler
                     break;
             }
         }
-        void EmitMultiplicative(EOperator op, CType rightType)
+        void EmitMultiplicative(EOperator op)
         {
             switch (op)
             {
@@ -246,8 +246,6 @@ namespace PaskalCompiler
                     methodILGenerator.Emit(OpCodes.Mul);
                     break;
                 case EOperator.slash:
-                    if (rightType._tt != EType.et_real)
-                        EmitConvert(rightType, realType);
                     methodILGenerator.Emit(OpCodes.Div);
                     break;
                 case EOperator.divsy:
@@ -625,8 +623,13 @@ namespace PaskalCompiler
         }
         CType SimpleExpression()
         {
-            Sign();
+            bool isMinus = Sign();
             CType l = Term();
+            if(isMinus)
+            {
+                methodILGenerator.Emit(OpCodes.Ldc_I4_M1);
+                methodILGenerator.Emit(OpCodes.Mul);
+            }
             COperation oper = curSymbol as COperation;
             
             while (oper != null && oper.IsAdditive())
@@ -666,6 +669,8 @@ namespace PaskalCompiler
             while(oper != null && oper.IsMultiplicative())
             {
                 Accept(Oper(oper._vo));
+                if (oper._vo == EOperator.slash && l != realType)
+                    EmitConvert(l, realType);
                 CType r = Factor();
                 if (l == unknownType)
                     r = l;
@@ -682,7 +687,11 @@ namespace PaskalCompiler
                     else if (!l.isDerivedTo(r, oper))
                         IO.RecordError(new UnderivableTypeException(l, r, oper));
                 }
-                EmitMultiplicative(oper._vo, r);
+                if (oper._vo == EOperator.slash && r != realType)
+                    EmitConvert(r, realType);
+                EmitMultiplicative(oper._vo);
+                if (oper._vo == EOperator.slash)
+                    l = realType;
                 oper = curSymbol as COperation;
             }
             return l;
@@ -778,12 +787,16 @@ namespace PaskalCompiler
             }
         }
 
-        void Sign()
+        bool Sign()
         {
             if (curSymbol.Equals(Oper(EOperator.plus)))
                 Accept(Oper(EOperator.plus));
             else if (curSymbol.Equals(Oper(EOperator.minus)))
+            {
                 Accept(Oper(EOperator.minus));
+                return true;
+            }
+            return false;
         }
 
         void Variables()
@@ -834,7 +847,7 @@ namespace PaskalCompiler
                     identificator = varList[i] as CIdentificator;
                     if (identificator == null)
                         IO.RecordError(new IdentificatorNotFoundException(varList[i]));
-                    else if (FindIdentifier(identificator.identName) != null)
+                    else if (scopes.Last().FindIdentifier(identificator.identName) != null)
                         IO.RecordError(new IdentificatorAlreadyExistsException(identificator));
                     else    
                         AddIdentifier(identificator.identName, IdentUseType.iVar, type);
